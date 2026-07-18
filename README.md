@@ -1,6 +1,6 @@
 # InfraForge
 
-**Platform DevOps self-hosted open source** untuk membangun, mendeploy, memonitor, dan mengelola aplikasi — semuanya dari satu dashboard terpusat.
+**Platform DevOps self-hosted open source** untuk membangun, mendeploy, memonitor, dan mengelola aplikasi semuanya dari satu dashboard terpusat.
 
 > Bukan sekadar "dashboard Docker". InfraForge adalah **Internal Developer Platform (IDP)** sederhana yang menyatukan tool-tool DevOps yang biasanya berdiri sendiri (Docker, Traefik, Prometheus, Grafana, Loki, GitHub Actions) menjadi satu alur kerja yang mulus.
 
@@ -38,7 +38,7 @@ Dengan InfraForge, alurnya jadi:
 Push Code → GitHub Actions → InfraForge → Deploy
 ```
 
-Sisanya — routing, HTTPS, monitoring, logging, alerting, backup — ditangani otomatis oleh platform.
+Sisanya routing, HTTPS, monitoring, logging, alerting, backup ditangani otomatis oleh platform.
 
 ---
 
@@ -60,12 +60,12 @@ flowchart TD
     K --> L["Notifikasi ke Discord / Telegram"]
 ```
 
-1. **Push** — developer push code ke GitHub.
-2. **CI** — GitHub Actions menjalankan lint, test, build image, lalu push ke GHCR.
-3. **Deploy** — InfraForge menarik image terbaru dan menjalankan `docker compose up` beserta health check.
-4. **Routing** — Traefik otomatis membuat routing dan HTTPS untuk domain aplikasi.
-5. **Observability** — Prometheus mengambil metric, Loki mengumpulkan log, semuanya tampil di Grafana.
-6. **Alerting** — Alertmanager mengirim notifikasi ke Discord/Telegram saat CPU tinggi, RAM penuh, atau container mati.
+1. **Push** -> developer push code ke GitHub.
+2. **CI** -> GitHub Actions menjalankan lint, test, build image, lalu push ke GHCR.
+3. **Deploy** -> InfraForge menarik image terbaru dan menjalankan `docker compose up` beserta health check.
+4. **Routing** -> Traefik otomatis membuat routing dan HTTPS untuk domain aplikasi.
+5. **Observability** -> Prometheus mengambil metric, Loki mengumpulkan log, semuanya tampil di Grafana.
+6. **Alerting** -> Alertmanager mengirim notifikasi ke Discord/Telegram saat CPU tinggi, RAM penuh, atau container mati.
 
 ---
 
@@ -229,7 +229,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-> Setup lengkap masih dalam pengembangan — instruksi detail akan ditambahkan seiring progress.
+> Setup lengkap masih dalam pengembangan, instruksi detail akan ditambahkan seiring progress.
 
 ---
 
@@ -240,10 +240,10 @@ docker compose up -d
 
 > *"Tempat untuk membangun, mengelola, dan mengoperasikan infrastruktur aplikasi."*
 
-Nama ini sengaja dibuat fleksibel — saat project berkembang ke arah Kubernetes, GitOps, atau multi-cloud, nama **InfraForge** tetap relevan.
+Nama ini sengaja dibuat fleksibel saat project berkembang ke arah Kubernetes, GitOps, atau multi-cloud, nama **InfraForge** tetap relevan.
 
 ---
 
 ## License
 
-Lisensi project ini akan ditentukan segera — lihat file `LICENSE` untuk detail terbaru.
+Lisensi project ini akan ditentukan segera lihat file `LICENSE` untuk detail terbaru.
