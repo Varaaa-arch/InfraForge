@@ -244,6 +244,6 @@ Nama ini sengaja dibuat fleksibel saat project berkembang ke arah Kubernetes, Gi
 
 ---
 
-## License
+## Lisensi
 
-Lisensi project ini akan ditentukan segera lihat file `LICENSE` untuk detail terbaru.
+Proyek ini dilisensikan di bawah **Apache License 2.0**. Lihat file [LICENSE](LICENSE) untuk informasi selengkapnya.
