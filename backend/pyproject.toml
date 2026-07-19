@@ -1,0 +1,54 @@
+# # 
+# [project]
+# # name = "backend"
+# # version = "0.1.0"
+# # description = "Add your description here"
+# # requires-python = ">=3.12"
+# # dependencies = [
+# #     "alembic>=1.18.5",
+# #     "fastapi>=0.139.2",
+# #     "loguru>=0.7.3",
+# #     "passlib[bcrypt]>=1.7.4",
+# #     "psycopg[binary]>=3.3.4",
+# #     "pydantic-settings>=2.14.2",
+# #     "python-jose[cryptography]>=3.5.0",
+# #     "python-multipart>=0.0.32",
+# #     "redis>=8.0.1",
+# #     "sqlalchemy>=2.0.51",
+# #     "uvicorn>=0.51.0",
+# # ]
+
+# # [dependency-groups]
+# # dev = [
+# #     "httpx>=0.28.1",
+# #     "mypy>=2.3.0",
+# #     "pytest>=9.1.1",
+# #     "ruff>=0.15.22",
+# # ]
+
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Backend core service for InfraForge infrastructure management platform"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.18.5",
+    "fastapi>=0.139.2",
+    "loguru>=0.7.3",
+    "passlib[bcrypt]>=1.7.4",
+    "psycopg[binary]>=3.3.4",
+    "pydantic-settings>=2.14.2",
+    "python-jose[cryptography]>=3.5.0",
+    "python-multipart>=0.0.32",
+    "redis>=8.0.1",
+    "sqlalchemy>=2.0.51",
+    "uvicorn>=0.51.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.3.0",
+    "pytest>=9.1.1",
+    "ruff>=0.15.22",
+]
