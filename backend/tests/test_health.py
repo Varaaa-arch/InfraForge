@@ -19,5 +19,3 @@ def test_ready_return_service_unavailable_when_dependencies_are_down() -> None:
     assert "database" in response.json()
     assert "redis" in response.json()
 
-
-    
