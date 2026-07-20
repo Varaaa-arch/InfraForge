@@ -1,6 +1,6 @@
 from collections.abc import Generator
 from loguru import logger
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
 
 from app.config import settings 
@@ -18,7 +18,7 @@ def get_db() -> Generator[Session, None, None]:
     finally: 
         db.close()
 
-def check_database_connection() -> None:
+def check_database_connection() -> bool:
     try: 
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
