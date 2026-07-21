@@ -33,6 +33,7 @@ description = "Backend core service for InfraForge infrastructure management pla
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.18.5",
+    "bcrypt<4.1",
     "fastapi>=0.139.2",
     "loguru>=0.7.3",
     "passlib[bcrypt]>=1.7.4",
