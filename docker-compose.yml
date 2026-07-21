@@ -1,0 +1,38 @@
+services:
+  backend:
+    build: ./backend
+    container_name: infraforge-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: infraforge-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-infraforge}
+      POSTGRES_USER: ${POSTGRES_USER:-infraforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-infraforge}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: infraforge-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
