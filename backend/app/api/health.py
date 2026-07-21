@@ -6,11 +6,11 @@ from app.database.redis_client import check_redis_connection
 router = APIRouter(tags=["Health Check"])
 
 @router.get("/health")
-def health() -> dict:
+def health() -> dict[str, str]:
     return {"status": "ok"}
 
 @router.get("/ready")
-def readiness_check(response: Response) -> dict:
+def readiness_check(response: Response) -> dict[str, str]:
     db_connected = check_database_connection() 
     redis_connected = check_redis_connection() 
 

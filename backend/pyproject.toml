@@ -52,3 +52,9 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.15.22",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+exclude = ["migrations", "scripts"]
