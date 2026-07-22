@@ -1,0 +1,81 @@
+name: CI
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+
+jobs: 
+    test:
+        runs-on: ubuntu-latest
+
+        services:
+            postgres:
+                image: postgres:16-alpine
+                env:
+                    POSTGRES_USER: infraforge
+                    POSTGRES_PASSWORD: infraforge
+                    POSTGRES_DB: infraforge
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd pg_isready
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+            
+            redis:
+                image: redis:7-alpine
+                ports: 
+                    - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+        
+        defaults:
+            run:
+                working-directory: backend
+        
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
+              with:
+                activate-environment: true
+                enable-cache: true
+
+            - name: Install Dependencies
+              run: uv sync
+            
+            - name: Lint (Ruff)
+              run: uv run ruff .
+
+            - name: Type check (mypy)
+              run: uv run mypy app --ignore-missing-imports
+
+            - name: Create .env for CI
+              run: |
+                cat > .env << 'ENVEOF'
+                APP_NAME=InfraForge
+                APP_VERSION=0.1.0
+                DEBUG=true
+                SECRET_KEY=ci-test-secret-key
+                POSTGRES_HOST=localhost
+                POSTGRES_PORT=5432
+                POSTGRES_DB=infraforge
+                POSTGRES_USER=infraforge
+                POSTGRES_PASSWORD=infraforge
+                REDIS_HOST=localhost
+                REDIS_PORT=6379
+                ENVEOF
+            
+            - name: Run database migrations
+              run: uv run alembic upgrade head
+
+            - name: Test (Pytest)
+              run: uv run pytest -v
