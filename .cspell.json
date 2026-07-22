@@ -1,0 +1,31 @@
+{
+    "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/packages/cspell-types/cspell.schema.json",
+    "version": "0.2",
+    "language": "en",
+    "words": [
+        "infraforge",
+        "isready",
+        "venv",
+        "mypy",
+        "pytest",
+        "ENVEOF",
+        "alembic",
+        "uvicorn",
+        "fastapi",
+        "pydantic",
+        "sqlalchemy",
+        "traefik",
+        "promtail",
+        "alertmanager",
+        "cadvisor",
+        "minio",
+        "ghcr",
+        "loki"
+    ],
+    "ignorePaths": [
+        "node_modules",
+        ".git",
+        "dist",
+        "*.lock"
+    ]
+}
