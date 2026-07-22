@@ -53,7 +53,7 @@ jobs:
               run: uv sync
             
             - name: Lint (Ruff)
-              run: uv run ruff .
+              run: uv run ruff check .
 
             - name: Type check (mypy)
               run: uv run mypy app --ignore-missing-imports
