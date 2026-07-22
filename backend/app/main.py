@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator
 from fastapi import FastAPI
 from loguru import logger
 
-from app.api import health
+from app.api import auth, health
 from app.config import settings
 from app.core.logging import setup_logging 
 from app.database.session import check_database_connection
@@ -21,6 +21,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION, lifespan=lifespan)
 app.include_router(health.router)
+app.include_router(auth.router)
 
 @app.get("/")
 def root () -> dict[str, str]:

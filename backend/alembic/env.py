@@ -9,7 +9,7 @@ from app.config import settings
 from app.database.session import Base
 
 # import model modules di sini biar Base.metadata tau tabel apa aja
-# from app.models import user  # noqa: F401
+from app.models import User  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
