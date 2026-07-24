@@ -5,7 +5,7 @@ Test untuk menutup missing coverage di app/services/token_blocklist.py:
   - line 35-37  : is_blocklisted()  — Redis raise Exception → log warning, return False
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import redis
@@ -35,8 +35,6 @@ def test_blocklist_token_logs_warning_when_redis_down() -> None:
 
 def test_blocklist_token_warning_message_logged(caplog: pytest.LogCaptureFixture) -> None:
     """Pastikan warning benar-benar di-log saat Redis down."""
-    import logging
-
     with patch("app.services.token_blocklist.redis_client") as mock_redis:
         mock_redis.set.side_effect = Exception("koneksi gagal")
 

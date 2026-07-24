@@ -11,10 +11,7 @@ import uuid
 from typing import Any
 from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
-
-from app.core.security import create_refresh_token
 
 
 def _unique_user() -> dict[str, str]:
