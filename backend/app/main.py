@@ -10,6 +10,7 @@ from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
 from app.database.redis_client import check_redis_connection
 from app.database.session import check_database_connection
+from app.middleware.logging_middleware import RequestLoggingMiddleware
 
 setup_logging(debug=settings.DEBUG)
 
@@ -43,6 +44,7 @@ app = FastAPI(
 )
 
 register_exception_handlers(app)
+app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(health.router)
 app.include_router(auth.router)
