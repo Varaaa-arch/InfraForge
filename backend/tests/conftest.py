@@ -9,6 +9,7 @@ test berikutnya tinggal pakai fixture `client` tanpa nulis ulang setup.
 from collections.abc import Generator
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
