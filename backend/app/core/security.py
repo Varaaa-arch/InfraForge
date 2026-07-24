@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, cast
+from typing import Any
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -14,17 +14,17 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 
 def hash_password(password: str) -> str:
-    return cast(str, pwd_context.hash(password))
+    return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return cast(bool, pwd_context.verify(plain_password, hashed_password))
+    return pwd_context.verify(plain_password, hashed_password)
 
 
 def _create_token(subject: str, expires_delta: timedelta, token_type: str) -> str:
     expire = datetime.now(timezone.utc) + expires_delta
     payload = {"sub": subject, "exp": expire, "type": token_type}
-    return cast(str, jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM))
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
 def create_access_token(subject: str) -> str:
@@ -37,6 +37,9 @@ def create_refresh_token(subject: str) -> str:
 
 def decode_token(token: str) -> dict[str, Any] | None:
     try:
-        return cast(dict[str, Any], jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM]))
+        payload: dict[str, Any] = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[ALGORITHM]
+        )
+        return payload
     except JWTError:
         return None

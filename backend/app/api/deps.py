@@ -25,8 +25,16 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
                 detail="Invalid token type",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        user_id: int | None = payload.get("sub")
-        if user_id is None:
+        raw_sub: str | None = payload.get("sub")
+        if raw_sub is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        try:
+            user_id: int = int(raw_sub)
+        except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token",
