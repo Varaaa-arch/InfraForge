@@ -5,7 +5,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
-from app.core.audit import log_action
+from app.core.audit import log_audit
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -36,7 +36,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> ApiResponse[
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email sudah dipakai")
 
     user = auth_service.create_user(db, payload.username, payload.email, payload.password)
-    log_action("REGISTER", user=user.username)
+    log_audit("REGISTER", user=user.username)
     return ApiResponse(data=UserResponse.model_validate(user))
 
 
@@ -46,10 +46,10 @@ def login(
 ) -> ApiResponse[Token]:
     user = auth_service.authenticate_user(db, form_data.username, form_data.password)
     if not user:
-        log_action("LOGIN_FAILED", user=form_data.username)
+        log_audit("LOGIN_FAILED", user=form_data.username)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Username atau password salah")
 
-    log_action("LOGIN", user=user.username)
+    log_audit("LOGIN", user=user.username)
     token = Token(
         access_token=create_access_token(str(user.id)),
         refresh_token=create_refresh_token(str(user.id)),
@@ -93,7 +93,7 @@ def logout(payload: RefreshRequest, db: Session = Depends(get_db)) -> ApiRespons
 
     user_id = token_data.get("sub")
     user = auth_service.get_user_by_id(db, int(user_id)) if user_id else None
-    log_action("LOGOUT", user=user.username if user else "unknown")
+    log_audit("LOGOUT", user=user.username if user else "unknown")
 
     return ApiResponse(data=MessageResponse(message="Berhasil logout"))
 
@@ -108,7 +108,7 @@ def change_password(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Password saat ini salah")
 
     auth_service.update_password(db, current_user, payload.new_password)
-    log_action("CHANGE_PASSWORD", user=current_user.username)
+    log_audit("CHANGE_PASSWORD", user=current_user.username)
 
     return ApiResponse(data=MessageResponse(message="Password berhasil diubah"))
 
