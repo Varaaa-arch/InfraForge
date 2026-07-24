@@ -18,9 +18,16 @@ def create_user(db: Session, username: str, email: str, password: str) -> User:
     db.refresh(user)
     return user
 
+def update_password(db: Session, User: User, new_password: str) -> User:
+    User.password = hash_password(new_password)
+    db.add(User)
+    db.commit()
+    db.refresh(User)
+    return User
+
+
 def authenticate_user(db: Session, username: str, password: str) -> User | None:
     user = get_user_by_username(db, username)
     if not user or not verify_password(password, user.password):
         return None
     return user
-
