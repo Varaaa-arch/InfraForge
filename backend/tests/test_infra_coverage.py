@@ -8,14 +8,12 @@ Test untuk menutup missing coverage di:
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 import redis
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
 from app.database.redis_client import check_redis_connection
 from app.database.session import check_database_connection
-from app.main import app
 
 
 # ── exception_handler.py line 33-34 ─────────────────────────────────────────
