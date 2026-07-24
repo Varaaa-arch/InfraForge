@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from loguru import logger
 
 from app.config import settings
 from app.database.session import get_db
@@ -54,3 +55,11 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+@pytest.fixture()
+def log_sink() -> Generator[list[str], None, None]:
+    messages: list[str] = []
+    sink_id = logger.add(lambda message: messages.append(message.record["message"]), level="INFO") 
+    yield messages
+    logger.remove(sink_id)
+
