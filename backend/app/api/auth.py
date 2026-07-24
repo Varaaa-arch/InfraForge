@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.audit import log_audit
 from app.core.security import create_access_token, create_refresh_token, decode_token
 from app.database.session import get_db
 from app.models.user import User
@@ -26,6 +27,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> ApiResponse[
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email sudah dipakai")
 
     user = auth_service.create_user(db, payload.username, payload.email, payload.password)
+    log_audit("REGISTER", user=user.username)
     return ApiResponse(data=UserResponse.model_validate(user))
 
 
@@ -35,8 +37,10 @@ def login(
 ) -> ApiResponse[Token]:
     user = auth_service.authenticate_user(db, form_data.username, form_data.password)
     if not user:
+        log_audit("LOGIN_FAILED", user=form_data.username)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Username atau password salah")
 
+    log_audit("LOGIN", user=user.username)
     token = Token(
         access_token=create_access_token(str(user.id)),
         refresh_token=create_refresh_token(str(user.id)),
@@ -55,6 +59,7 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> ApiRespon
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User tidak ditemukan")
 
+    log_audit("REFRESH_TOKEN", user=user.username)
     token = Token(
         access_token=create_access_token(str(user.id)),
         refresh_token=create_refresh_token(str(user.id)),
