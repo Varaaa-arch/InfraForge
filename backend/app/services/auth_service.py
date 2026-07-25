@@ -28,6 +28,8 @@ def update_password(db: Session, User: User, new_password: str) -> User:
 
 def authenticate_user(db: Session, username: str, password: str) -> User | None:
     user = get_user_by_username(db, username)
-    if not user or not verify_password(password, user.password):
+    if not user or not user.is_active or not verify_password(password, user.password):
         return None
     return user
+
+

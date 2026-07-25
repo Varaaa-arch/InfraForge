@@ -69,7 +69,7 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> ApiRespon
 
     user_id = token_data.get("sub")
     user = auth_service.get_user_by_id(db, int(user_id)) if user_id else None
-    if not user:
+    if not user or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User tidak ditemukan")
 
     token = Token(

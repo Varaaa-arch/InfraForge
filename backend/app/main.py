@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from loguru import logger
 
-from app.api import auth, health
+from app.api import auth, health, users
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -22,6 +22,10 @@ tags_metadata = [
     {
         "name": "auth",
         "description": "Registrasi, login, dan manajemen token JWT.",
+    },
+    {
+        "name": "users",
+        "description": "Manajemen profil user yang sedang login.",
     },
 ]
 
@@ -48,6 +52,7 @@ app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(users.router)
 
 
 @app.get("/")
