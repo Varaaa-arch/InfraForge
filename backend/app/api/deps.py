@@ -27,7 +27,10 @@ def get_current_user(
     if user_id is None:
         raise credentials_error
 
-    user = auth_service.get_user_by_id(db, int(user_id))
+    try:
+        user = auth_service.get_user_by_id(db, int(user_id))
+    except ValueError:
+        raise credentials_error
     if user is None or not user.is_active:
         raise credentials_error
 

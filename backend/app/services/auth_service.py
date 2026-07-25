@@ -31,3 +31,5 @@ def authenticate_user(db: Session, username: str, password: str) -> User | None:
     if not user or not user.is_active or not verify_password(password, user.password):
         return None
     return user
+
+
