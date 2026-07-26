@@ -7,7 +7,7 @@ from app.database.session import get_db
 from app.models.project import Project, Visibility
 from app.models.user import User
 from app.schemas.common import MessageResponse
-from app.schemas.project import ProjectCreate, ProjectResponse, ProjectUpdate
+from app.schemas.project import ProjectCreate, ProjectResponse, ProjectUpdate, RepositoryUpdate
 from app.schemas.response import ApiResponse 
 from app.services import project_service
 
@@ -69,6 +69,24 @@ def update_project(
         visibility=payload.visibility,
     )
     log_audit("UPDATE_PROJECT", user=current_user.username, project=updated.slug)
+    return ApiResponse(data=ProjectResponse.model_validate(updated))
+
+@router.patch("/{project_id}/repository", response_model=ApiResponse[ProjectResponse])
+def update_repository(
+    project_id: int,
+    payload: RepositoryUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiResponse[ProjectResponse]:
+    project = _get_owned_project_or_404(db, project_id, current_user)
+    updated = project_service.update_repository(
+        db,
+        project,
+        repository_url=payload.repository_url,
+        default_branch=payload.default_branch,
+        provider=payload.provider,
+    )
+    log_audit("UPDATE_PROJECT_REPOSITORY", user=current_user.username, project=updated.slug)
     return ApiResponse(data=ProjectResponse.model_validate(updated))
 
 @router.delete("/{project_id}", response_model=ApiResponse[MessageResponse])
