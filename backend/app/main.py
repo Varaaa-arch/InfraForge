@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from loguru import logger
 
-from app.api import auth, health, users
+from app.api import auth, health, projects, users
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -27,6 +27,10 @@ tags_metadata = [
         "name": "users",
         "description": "Manajemen profil user yang sedang login.",
     },
+    {
+        "name": "projects",
+        "description": "Create, read, update, delete project milik user.",
+    }
 ]
 
 
@@ -53,7 +57,7 @@ app.add_middleware(RequestLoggingMiddleware)
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(users.router)
-
+app.include_router(projects.router)
 
 @app.get("/")
 def root() -> dict[str, str]:
