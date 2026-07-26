@@ -41,7 +41,7 @@ def create_project(
 
 @router.get("", response_model=ApiResponse[list[ProjectResponse]])
 def list_project(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> ApiResponse[list[ProjectResponse]]:
-    projects = project_service.list_project_for_owner(db, current_user.id)
+    projects = project_service.list_projects_for_owner(db, current_user.id)
     return ApiResponse(data=[ProjectResponse.model_validate(p) for p in projects])
 
 @router.get("/{project_id}", response_model=ApiResponse[ProjectResponse])
