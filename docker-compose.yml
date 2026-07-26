@@ -22,7 +22,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-infraforge}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-infraforge}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
