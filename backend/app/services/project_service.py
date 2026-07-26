@@ -48,6 +48,8 @@ def list_projects_for_owner(db: Session, owner_id: int) -> list[Project]:
         .all()
     )
 
+def count_projects_for_owner(db: Session, owner_id: int) -> int:
+    return db.query(Project).filter(Project.owner_id == owner_id).count()
 
 def update_project(
     db: Session,
