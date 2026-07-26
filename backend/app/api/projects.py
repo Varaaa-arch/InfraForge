@@ -80,6 +80,6 @@ def delete_project(
     project = _get_owned_project_or_404(db, project_id, current_user)
     slug = project.slug 
     project_service.delete_project(db, project)
-    log_audit("DELETE PROJECT", user=current_user.username, project=slug)
+    log_audit("DELETE_PROJECT", user=current_user.username, project=slug)
     return ApiResponse(data=MessageResponse(message="Project deleted successfully"))
  

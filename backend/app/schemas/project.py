@@ -10,9 +10,9 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=20000)
-    visibility: Visibility = Visibility.private
+    visibility: Visibility | None = None
 
 
 class ProjectResponse(BaseModel):
@@ -23,6 +23,6 @@ class ProjectResponse(BaseModel):
     name: str
     slug: str
     description: str | None
-    Visibility: Visibility
+    visibility: Visibility
     created_at: datetime
     updated_at: datetime
