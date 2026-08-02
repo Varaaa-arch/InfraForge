@@ -53,7 +53,7 @@ def _require_owned_project(
 
 @router.post(
     "",
-    response_model=ApiResponse[dict],
+    response_model=ApiResponse[dict[str, object]],
     status_code=status.HTTP_200_OK,
     summary="Bulk upsert environment variables",
     description=(
@@ -74,7 +74,7 @@ def bulk_upsert_env_vars(
     payload: EnvVarBulkCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> ApiResponse[dict]:
+) -> ApiResponse[dict[str, object]]:
     _require_owned_project(project_id, current_user, db)
     env_vars, summary = env_var_service.bulk_upsert(db, project_id, payload)
     log_audit(
