@@ -65,17 +65,32 @@ jobs:
                 APP_VERSION=0.1.0
                 DEBUG=true
                 SECRET_KEY=ci-test-secret-key
-                POSTGRES_HOST=localhost
+                POSTGRES_HOST=postgres
                 POSTGRES_PORT=5432
                 POSTGRES_DB=infraforge
                 POSTGRES_USER=infraforge
                 POSTGRES_PASSWORD=infraforge
-                REDIS_HOST=localhost
+                REDIS_HOST=redis
                 REDIS_PORT=6379
                 ENVEOF
-            
+
+            - name: Wait for Postgres
+              run: |
+                for i in $(seq 1 30); do
+                  if pg_isready -h postgres -p 5432 -U infraforge; then
+                    echo "Postgres is ready"
+                    break
+                  fi
+                  echo "Waiting for Postgres... ($i/30)"
+                  sleep 1
+                done
+
             - name: Run database migrations
+              env:
+                DATABASE_URL: postgresql+psycopg://infraforge:infraforge@postgres:5432/infraforge
               run: uv run alembic upgrade head
 
             - name: Test (Pytest)
+              env:
+                DATABASE_URL: postgresql+psycopg://infraforge:infraforge@postgres:5432/infraforge
               run: uv run pytest -v
