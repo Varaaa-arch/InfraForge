@@ -7,7 +7,7 @@ Service layer memanggil fungsi-fungsi ini, bukan langsung akses Session.
 
 from sqlalchemy.orm import Session
 
-from app.models.server import AuthType, Server, ServerStatus
+from app.models.server import Server, ServerStatus
 from app.schemas.server import ServerCreate, ServerUpdate
 
 

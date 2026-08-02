@@ -24,7 +24,6 @@ from app.database.session import get_db
 from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.env_var import (
-    BulkUpsertResult,
     EnvVarBulkCreate,
     EnvVarMaskedResponse,
     EnvVarResponse,

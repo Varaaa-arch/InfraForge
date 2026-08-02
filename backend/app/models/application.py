@@ -11,7 +11,7 @@ menyimpan informasi yang dibutuhkan oleh deployment engine nanti.
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.session import Base

@@ -9,7 +9,6 @@ ditangani di sini.
 from sqlalchemy.orm import Session
 
 from app.models.application import AppStatus, Application
-from app.models.project import Project
 from app.repositories import application_repository
 from app.schemas.application import ApplicationCreate, ApplicationUpdate
 

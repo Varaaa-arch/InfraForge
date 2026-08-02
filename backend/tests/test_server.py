@@ -254,7 +254,6 @@ class TestSSHTestEndpoint:
 
         # Mock paramiko.SSHClient agar tidak buka koneksi nyata
         mock_ssh = MagicMock()
-        mock_ssh_class = MagicMock(return_value=mock_ssh)
         mock_ssh.connect.return_value = None  # koneksi sukses
         mock_ssh.close.return_value = None
 
