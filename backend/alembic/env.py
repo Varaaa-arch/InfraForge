@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -5,11 +6,18 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from app.config import settings
-from app.database.session import Base
+# Baca DATABASE_URL dari env var dulu (CI inject ini via 'env:' di workflow).
+# Fallback ke Settings jika tidak ada (local dev dengan .env).
+_database_url = os.environ.get("DATABASE_URL")
+
+if not _database_url:
+    from app.config import settings
+    _database_url = settings.db_url
+
+from app.database.session import Base  # noqa: E402
 
 # import ALL model modules so Base.metadata includes every table
-from app.models import (  # noqa: F401
+from app.models import (  # noqa: F401, E402
     AppStatus,
     Application,
     AuthType,
@@ -21,10 +29,8 @@ from app.models import (  # noqa: F401
     User,
 )
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.db_url)
+config.set_main_option("sqlalchemy.url", _database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

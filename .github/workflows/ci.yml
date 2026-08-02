@@ -6,9 +6,14 @@ on:
     pull_request:
         branches: [main]
 
-jobs: 
+jobs:
     test:
         runs-on: ubuntu-latest
+
+        # Set DATABASE_URL at job level so it is available to every step,
+        # including Python module-level imports (config.py, alembic/env.py).
+        env:
+            DATABASE_URL: postgresql+psycopg://infraforge:infraforge@localhost:5432/infraforge
 
         services:
             postgres:
@@ -20,25 +25,25 @@ jobs:
                 ports:
                     - 5432:5432
                 options: >-
-                    --health-cmd pg_isready
-                    --health-interval 10s
+                    --health-cmd "pg_isready -U infraforge"
+                    --health-interval 5s
                     --health-timeout 5s
-                    --health-retries 5
-            
+                    --health-retries 10
+
             redis:
                 image: redis:7-alpine
-                ports: 
+                ports:
                     - 6379:6379
                 options: >-
                     --health-cmd "redis-cli ping"
-                    --health-interval 10s
+                    --health-interval 5s
                     --health-timeout 5s
                     --health-retries 5
-        
+
         defaults:
             run:
                 working-directory: backend
-        
+
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
@@ -46,12 +51,12 @@ jobs:
             - name: Install uv
               uses: astral-sh/setup-uv@v6
               with:
-                activate-environment: true
-                enable-cache: true
+                  activate-environment: true
+                  enable-cache: true
 
             - name: Install Dependencies
               run: uv sync
-            
+
             - name: Lint (Ruff)
               run: uv run ruff check .
 
@@ -60,37 +65,22 @@ jobs:
 
             - name: Create .env for CI
               run: |
-                cat > .env << 'ENVEOF'
-                APP_NAME=InfraForge
-                APP_VERSION=0.1.0
-                DEBUG=true
-                SECRET_KEY=ci-test-secret-key
-                POSTGRES_HOST=postgres
-                POSTGRES_PORT=5432
-                POSTGRES_DB=infraforge
-                POSTGRES_USER=infraforge
-                POSTGRES_PASSWORD=infraforge
-                REDIS_HOST=redis
-                REDIS_PORT=6379
-                ENVEOF
-
-            - name: Wait for Postgres
-              run: |
-                for i in $(seq 1 30); do
-                  if pg_isready -h postgres -p 5432 -U infraforge; then
-                    echo "Postgres is ready"
-                    break
-                  fi
-                  echo "Waiting for Postgres... ($i/30)"
-                  sleep 1
-                done
+                  cat > .env << 'ENVEOF'
+                  APP_NAME=InfraForge
+                  APP_VERSION=0.1.0
+                  DEBUG=true
+                  SECRET_KEY=ci-test-secret-key
+                  POSTGRES_HOST=localhost
+                  POSTGRES_PORT=5432
+                  POSTGRES_DB=infraforge
+                  POSTGRES_USER=infraforge
+                  POSTGRES_PASSWORD=infraforge
+                  REDIS_HOST=localhost
+                  REDIS_PORT=6379
+                  ENVEOF
 
             - name: Run database migrations
-              env:
-                DATABASE_URL: postgresql+psycopg://infraforge:infraforge@postgres:5432/infraforge
               run: uv run alembic upgrade head
 
             - name: Test (Pytest)
-              env:
-                DATABASE_URL: postgresql+psycopg://infraforge:infraforge@postgres:5432/infraforge
               run: uv run pytest -v
