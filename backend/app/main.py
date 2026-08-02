@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from loguru import logger
 
-from app.api import auth, dashboard, health, projects, servers, users
+from app.api import auth, dashboard, env_vars, health, projects, servers, users
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -42,6 +42,13 @@ tags_metadata = [
             "dan tes koneksi SSH ke server target."
         ),
     },
+    {
+        "name": "env-vars",
+        "description": (
+            "Manajemen environment variables per project. "
+            "Value dienkripsi otomatis dengan Fernet sebelum disimpan ke database."
+        ),
+    },
 ]
 
 
@@ -71,6 +78,7 @@ app.include_router(users.router)
 app.include_router(projects.router)
 app.include_router(dashboard.router)
 app.include_router(servers.router)
+app.include_router(env_vars.router)
 
 @app.get("/")
 def root() -> dict[str, str]:
