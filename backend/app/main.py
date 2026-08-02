@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from loguru import logger
 
-from app.api import applications, auth, dashboard, env_vars, health, projects, servers, users
+from app.api import applications, auth, containers, dashboard, docker, env_vars, health, projects, servers, users
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -57,6 +57,20 @@ tags_metadata = [
             "dan pantau status operasional aplikasi."
         ),
     },
+    {
+        "name": "docker",
+        "description": (
+            "Manajemen Docker Images: list image lokal, pull dari registry, "
+            "dan hapus image."
+        ),
+    },
+    {
+        "name": "containers",
+        "description": (
+            "Manajemen Docker Containers: list, start, stop, restart, hapus, "
+            "lihat log, dan inspect detail container."
+        ),
+    },
 ]
 
 
@@ -88,6 +102,8 @@ app.include_router(dashboard.router)
 app.include_router(servers.router)
 app.include_router(env_vars.router)
 app.include_router(applications.router)
+app.include_router(docker.router)
+app.include_router(containers.router)
 
 @app.get("/")
 def root() -> dict[str, str]:
