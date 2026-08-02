@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
     SECRET_KEY: str
+    # Kunci enkripsi untuk Fernet (env var values). Jika tidak diset,
+    # fallback ke SECRET_KEY. Format bebas — di-derive via SHA-256.
+    ENCRYPTION_KEY: str | None = None
 
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
