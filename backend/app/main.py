@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from loguru import logger
 
-from app.api import applications, auth, containers, dashboard, docker, env_vars, health, projects, servers, users
+from app.api import applications, auth, containers, dashboard, deployments, docker, env_vars, health, projects, servers, users
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -71,6 +71,13 @@ tags_metadata = [
             "lihat log, dan inspect detail container."
         ),
     },
+    {
+        "name": "deployments",
+        "description": (
+            "Orkestrasi deployment: picu deployment baru (clone repo → inject env vars "
+            "→ docker compose build + up), lihat history, dan detail status deployment."
+        ),
+    },
 ]
 
 
@@ -104,6 +111,7 @@ app.include_router(env_vars.router)
 app.include_router(applications.router)
 app.include_router(docker.router)
 app.include_router(containers.router)
+app.include_router(deployments.router)
 
 @app.get("/")
 def root() -> dict[str, str]:

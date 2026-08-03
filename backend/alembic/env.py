@@ -21,6 +21,8 @@ from app.models import (  # noqa: F401, E402
     AppStatus,
     Application,
     AuthType,
+    Deployment,
+    DeploymentStatus,
     EnvVar,
     GitProvider,
     Project,
