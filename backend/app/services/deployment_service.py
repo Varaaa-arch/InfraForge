@@ -1,23 +1,17 @@
 """
-Deployment Service — orkestrasi alur deployment (Task 3.6).
+Deployment Service — orkestrasi alur deployment (Task 3.6 + Task 3.8).
 
-Alur eksekusi `run_deployment`:
-  1. Ambil Application & Server dari DB, validasi konfigurasi.
-  2. Buat record Deployment dengan status `pending`.
-  3. Set status → `deploying`.
-  4. Clone repository via git_service (ke tmp/).
-  5. Inject env vars dari DB ke file `.env` di direktori clone.
-  6. Jalankan `docker compose build` & `docker compose up -d` via subprocess.
-  7. Set status → `success`.
-  8. Jika ada Exception di step 4–7, set status → `failed` dan re-raise.
-  9. Cleanup direktori tmp/ di finally block.
-
-Desain:
-- Setiap operasi yang bisa gagal dibungkus try/except sehingga status
-  selalu terupdate bahkan jika terjadi crash di tengah proses.
-- Subprocess untuk docker compose bisa diganti dengan SSH exec di masa depan
-  (saat server_id digunakan untuk remote deployment).
-- Fungsi `_run_compose` dan `_write_env_file` dipisah agar mudah di-mock di test.
+Alur eksekusi `_run_deployment`:
+  1. Set status → deploying.
+  2. Validasi konfigurasi (repository URL wajib ada).
+  3. Clone repository via git_service (ke tmp/).
+  4. Inject env vars dari DB ke .env di direktori clone.
+  5. Jalankan docker compose build + up -d.
+  6. Panggil run_health_check → cek status container setelah startup.
+  7. Jika healthy → set status success.
+     Jika unhealthy → raise RuntimeError → set status failed.
+  8. Jika ada Exception → set status failed, re-raise.
+  9. Cleanup tmp/ di finally block.
 """
 
 from __future__ import annotations
@@ -31,12 +25,13 @@ from sqlalchemy.orm import Session
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.server import Server
-from app.repositories import deployment_repository
 from app.repositories import application_repository
+from app.repositories import deployment_repository
 from app.repositories import env_var_repository
 from app.repositories import server_repository
 from app.services import encryption_service
 from app.services import git_service
+from app.services import health_check as health_check_service
 
 
 # ---------------------------------------------------------------------------
@@ -193,13 +188,28 @@ def _run_deployment(
         # --- 5. Jalankan docker compose ---
         _run_compose(repo_dir, app.compose_path)
 
-        # --- 6. Sukses ---
+        # --- 6. Health check: pastikan container benar-benar running ---
+        # Docker compose menggunakan nama direktori sebagai project name by default.
+        compose_project = repo_dir.name
+        hc_result = health_check_service.run_health_check(
+            compose_project=compose_project,
+            startup_delay=8.0,
+            retries=3,
+        )
+
+        if not hc_result.healthy:
+            raise RuntimeError(
+                f"Health check gagal setelah deploy: {hc_result.message}"
+            )
+
+        # --- 7. Sukses ---
         deployment_repository.update_status(
             db, deployment, DeploymentStatus.success
         )
         logger.info(
             f"Deployment #{deployment.id} sukses "
-            f"(app={app.id}, commit={clone_result.commit_sha[:8]})"
+            f"(app={app.id}, commit={clone_result.commit_sha[:8]}, "
+            f"containers={hc_result.containers_checked})"
         )
 
     except Exception as exc:

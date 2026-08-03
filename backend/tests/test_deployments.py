@@ -170,7 +170,16 @@ class TestRunDeployment:
             "update_status": "app.services.deployment_service.deployment_repository.update_status",
             "list_env": "app.services.deployment_service.env_var_repository.list_by_project",
             "decrypt": "app.services.deployment_service.encryption_service.decrypt",
+            "health_check": "app.services.deployment_service.health_check_service.run_health_check",
         }
+
+    def _healthy_hc(self) -> MagicMock:
+        from app.services.health_check import HealthCheckResult
+        r = MagicMock(spec=HealthCheckResult)
+        r.healthy = True
+        r.containers_checked = 1
+        r.message = "ok"
+        return r
 
     def test_success_flow_updates_status_to_success(self) -> None:
         from app.services.deployment_service import _run_deployment  # type: ignore[attr-defined]
@@ -188,11 +197,11 @@ class TestRunDeployment:
             patch(p["run_compose"], return_value=("build ok", "")),
             patch(p["write_env"]),
             patch(p["list_env"], return_value=[]),
+            patch(p["health_check"], return_value=self._healthy_hc()),
             patch(p["update_status"]) as mock_update,
         ):
             _run_deployment(db, deployment, app, server)
 
-        # Harus ada panggilan update_status dengan DeploymentStatus.success
         statuses = [call.args[2] for call in mock_update.call_args_list]
         assert DeploymentStatus.success in statuses
 
@@ -256,6 +265,7 @@ class TestRunDeployment:
             patch(p["run_compose"], return_value=("", "")),
             patch(p["write_env"]),
             patch(p["list_env"], return_value=[]),
+            patch(p["health_check"], return_value=self._healthy_hc()),
             patch(p["update_status"]),
         ):
             _run_deployment(db, deployment, app, server)
@@ -325,6 +335,7 @@ class TestRunDeployment:
             patch(p["write_env"]) as mock_write,
             patch(p["list_env"], return_value=[mock_ev]),
             patch(p["decrypt"], return_value="postgres://localhost/db"),
+            patch(p["health_check"], return_value=self._healthy_hc()),
             patch(p["update_status"]),
         ):
             _run_deployment(db, deployment, app, server)
@@ -349,6 +360,7 @@ class TestRunDeployment:
             patch(p["run_compose"], return_value=("", "")),
             patch(p["write_env"]) as mock_write,
             patch(p["list_env"], return_value=[]),
+            patch(p["health_check"], return_value=self._healthy_hc()),
             patch(p["update_status"]),
         ):
             _run_deployment(db, deployment, app, server)
@@ -371,6 +383,7 @@ class TestRunDeployment:
             patch(p["run_compose"], return_value=("", "")),
             patch(p["write_env"]),
             patch(p["list_env"], return_value=[]),
+            patch(p["health_check"], return_value=self._healthy_hc()),
             patch(p["update_status"]) as mock_update,
         ):
             _run_deployment(db, deployment, app, server)
@@ -580,6 +593,7 @@ class TestDeploymentEndpoints:
 
     def test_trigger_deployment_success_returns_201(self, client: object) -> None:
         from fastapi.testclient import TestClient
+        from app.services.health_check import HealthCheckResult
         c: TestClient = client  # type: ignore[assignment]
         headers = self._register_and_login(c)
         project_id = self._create_project(c, headers)
@@ -587,6 +601,7 @@ class TestDeploymentEndpoints:
         app_id = self._create_app(c, headers, project_id)
 
         clone_result = _make_clone_result()
+        healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
         with (
             patch(
                 "app.services.deployment_service.git_service.clone_repository",
@@ -596,6 +611,10 @@ class TestDeploymentEndpoints:
             patch(
                 "app.services.deployment_service._run_compose",
                 return_value=("ok", ""),
+            ),
+            patch(
+                "app.services.deployment_service.health_check_service.run_health_check",
+                return_value=healthy,
             ),
         ):
             r = c.post(
@@ -658,6 +677,7 @@ class TestDeploymentEndpoints:
 
     def test_trigger_deployment_with_branch_override(self, client: object) -> None:
         from fastapi.testclient import TestClient
+        from app.services.health_check import HealthCheckResult
         c: TestClient = client  # type: ignore[assignment]
         headers = self._register_and_login(c)
         project_id = self._create_project(c, headers)
@@ -665,6 +685,7 @@ class TestDeploymentEndpoints:
         app_id = self._create_app(c, headers, project_id)
 
         clone_result = _make_clone_result()
+        healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
         with (
             patch(
                 "app.services.deployment_service.git_service.clone_repository",
@@ -674,6 +695,10 @@ class TestDeploymentEndpoints:
             patch(
                 "app.services.deployment_service._run_compose",
                 return_value=("ok", ""),
+            ),
+            patch(
+                "app.services.deployment_service.health_check_service.run_health_check",
+                return_value=healthy,
             ),
         ):
             r = c.post(
@@ -709,6 +734,7 @@ class TestDeploymentEndpoints:
 
     def test_list_deployments_filter_by_app_id(self, client: object) -> None:
         from fastapi.testclient import TestClient
+        from app.services.health_check import HealthCheckResult
         c: TestClient = client  # type: ignore[assignment]
         headers = self._register_and_login(c)
         project_id = self._create_project(c, headers)
@@ -716,6 +742,7 @@ class TestDeploymentEndpoints:
         app_id = self._create_app(c, headers, project_id)
 
         clone_result = _make_clone_result()
+        healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
         with (
             patch(
                 "app.services.deployment_service.git_service.clone_repository",
@@ -725,6 +752,10 @@ class TestDeploymentEndpoints:
             patch(
                 "app.services.deployment_service._run_compose",
                 return_value=("ok", ""),
+            ),
+            patch(
+                "app.services.deployment_service.health_check_service.run_health_check",
+                return_value=healthy,
             ),
         ):
             c.post(
@@ -754,6 +785,7 @@ class TestDeploymentEndpoints:
 
     def test_get_deployment_returns_200(self, client: object) -> None:
         from fastapi.testclient import TestClient
+        from app.services.health_check import HealthCheckResult
         c: TestClient = client  # type: ignore[assignment]
         headers = self._register_and_login(c)
         project_id = self._create_project(c, headers)
@@ -761,6 +793,7 @@ class TestDeploymentEndpoints:
         app_id = self._create_app(c, headers, project_id)
 
         clone_result = _make_clone_result()
+        healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
         with (
             patch(
                 "app.services.deployment_service.git_service.clone_repository",
@@ -770,6 +803,10 @@ class TestDeploymentEndpoints:
             patch(
                 "app.services.deployment_service._run_compose",
                 return_value=("ok", ""),
+            ),
+            patch(
+                "app.services.deployment_service.health_check_service.run_health_check",
+                return_value=healthy,
             ),
         ):
             created = c.post(
@@ -799,6 +836,7 @@ class TestDeploymentEndpoints:
     def test_get_deployment_other_user_returns_404(self, client: object) -> None:
         """User lain tidak boleh bisa melihat deployment milik user pertama."""
         from fastapi.testclient import TestClient
+        from app.services.health_check import HealthCheckResult
         c: TestClient = client  # type: ignore[assignment]
 
         # User A buat deployment
@@ -808,6 +846,7 @@ class TestDeploymentEndpoints:
         app_id = self._create_app(c, headers_a, project_id)
 
         clone_result = _make_clone_result()
+        healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
         with (
             patch(
                 "app.services.deployment_service.git_service.clone_repository",
@@ -817,6 +856,10 @@ class TestDeploymentEndpoints:
             patch(
                 "app.services.deployment_service._run_compose",
                 return_value=("ok", ""),
+            ),
+            patch(
+                "app.services.deployment_service.health_check_service.run_health_check",
+                return_value=healthy,
             ),
         ):
             created = c.post(
@@ -867,12 +910,15 @@ class TestDeploymentRepositoryFilter:
     def _deploy(self, client: object, headers: dict[str, str], app_id: int, server_id: int) -> int:
         """Trigger deployment via API (mocked), kembalikan deployment id."""
         from fastapi.testclient import TestClient
+        from app.services.health_check import HealthCheckResult
         c: TestClient = client  # type: ignore[assignment]
         clone_result = _make_clone_result()
+        healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
         with (
             patch("app.services.deployment_service.git_service.clone_repository", return_value=clone_result),
             patch("app.services.deployment_service.git_service.cleanup"),
             patch("app.services.deployment_service._run_compose", return_value=("ok", "")),
+            patch("app.services.deployment_service.health_check_service.run_health_check", return_value=healthy),
         ):
             r = c.post("/deployments", json={"application_id": app_id, "server_id": server_id}, headers=headers)
         return int(r.json()["data"]["id"])
@@ -1130,8 +1176,10 @@ class TestDeploymentEndpointsFilter:
         self, client: object, headers: dict[str, str], app_id: int, server_id: int
     ) -> dict[str, object]:
         from fastapi.testclient import TestClient
+        from app.services.health_check import HealthCheckResult
         c: TestClient = client  # type: ignore[assignment]
         clone_result = _make_clone_result()
+        healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
         with (
             patch(
                 "app.services.deployment_service.git_service.clone_repository",
@@ -1141,6 +1189,10 @@ class TestDeploymentEndpointsFilter:
             patch(
                 "app.services.deployment_service._run_compose",
                 return_value=("ok", ""),
+            ),
+            patch(
+                "app.services.deployment_service.health_check_service.run_health_check",
+                return_value=healthy,
             ),
         ):
             r = c.post(
@@ -1272,10 +1324,12 @@ class TestDeploymentEndpointsFilter:
         self, client: object
     ) -> None:
         from fastapi.testclient import TestClient
+        from app.services.health_check import HealthCheckResult
         c: TestClient = client  # type: ignore[assignment]
         headers, server_id, app_id, _ = self._setup(c)
 
         clone_result = _make_clone_result(sha="cafebabe12345678")
+        healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
         with (
             patch(
                 "app.services.deployment_service.git_service.clone_repository",
@@ -1285,6 +1339,10 @@ class TestDeploymentEndpointsFilter:
             patch(
                 "app.services.deployment_service._run_compose",
                 return_value=("ok", ""),
+            ),
+            patch(
+                "app.services.deployment_service.health_check_service.run_health_check",
+                return_value=healthy,
             ),
         ):
             r = c.post(
@@ -1320,3 +1378,552 @@ class TestDeploymentEndpointsFilter:
 
         r = c.get("/deployments?limit=9999", headers=headers)
         assert r.status_code == 422
+
+
+# ==========================================================================
+# Task 3.8 — Health Check Tests
+# ==========================================================================
+
+# ---------------------------------------------------------------------------
+# _check_compose_containers — unit tests
+# ---------------------------------------------------------------------------
+
+class TestCheckComposeContainers:
+    """Test fungsi _check_compose_containers dengan mock Docker client."""
+
+    def _make_container(self, name: str, status: str, health: str = "") -> MagicMock:
+        c = MagicMock()
+        c.name = name
+        c.status = status
+        if health:
+            c.attrs = {"State": {"Health": {"Status": health}}}
+        else:
+            c.attrs = {"State": {}}
+        return c
+
+    def test_all_running_returns_healthy(self) -> None:
+        from app.services.health_check import _check_compose_containers  # type: ignore[attr-defined]
+
+        containers = [
+            self._make_container("web_1", "running"),
+            self._make_container("db_1", "running"),
+        ]
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = containers
+
+        with patch("docker.from_env", return_value=mock_client):
+            result = _check_compose_containers("myproject")
+
+        assert result.healthy is True
+        assert result.containers_checked == 2
+
+    def test_exited_container_returns_unhealthy(self) -> None:
+        from app.services.health_check import _check_compose_containers  # type: ignore[attr-defined]
+
+        containers = [
+            self._make_container("web_1", "running"),
+            self._make_container("worker_1", "exited"),
+        ]
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = containers
+
+        with patch("docker.from_env", return_value=mock_client):
+            result = _check_compose_containers("myproject")
+
+        assert result.healthy is False
+        assert result.statuses["worker_1"] == "exited"
+
+    def test_restarting_container_returns_unhealthy(self) -> None:
+        from app.services.health_check import _check_compose_containers  # type: ignore[attr-defined]
+
+        containers = [self._make_container("app_1", "restarting")]
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = containers
+
+        with patch("docker.from_env", return_value=mock_client):
+            result = _check_compose_containers("myproject")
+
+        assert result.healthy is False
+
+    def test_no_containers_returns_unhealthy(self) -> None:
+        from app.services.health_check import _check_compose_containers  # type: ignore[attr-defined]
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = []
+
+        with patch("docker.from_env", return_value=mock_client):
+            result = _check_compose_containers("myproject")
+
+        assert result.healthy is False
+        assert result.containers_checked == 0
+        assert "Tidak ada container" in result.message
+
+    def test_healthcheck_status_takes_priority_over_raw_status(self) -> None:
+        from app.services.health_check import _check_compose_containers  # type: ignore[attr-defined]
+
+        # Container raw status=running tapi healthcheck=unhealthy
+        containers = [self._make_container("app_1", "running", health="unhealthy")]
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = containers
+
+        with patch("docker.from_env", return_value=mock_client):
+            result = _check_compose_containers("myproject")
+
+        assert result.healthy is False
+        assert result.statuses["app_1"] == "unhealthy"
+
+    def test_healthy_healthcheck_status_returns_healthy(self) -> None:
+        from app.services.health_check import _check_compose_containers  # type: ignore[attr-defined]
+
+        containers = [self._make_container("app_1", "running", health="healthy")]
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = containers
+
+        with patch("docker.from_env", return_value=mock_client):
+            result = _check_compose_containers("myproject")
+
+        assert result.healthy is True
+
+    def test_uses_label_filter_for_compose_project(self) -> None:
+        from app.services.health_check import _check_compose_containers  # type: ignore[attr-defined]
+
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = []
+
+        with patch("docker.from_env", return_value=mock_client):
+            _check_compose_containers("my-compose-project")
+
+        call_kwargs = mock_client.containers.list.call_args.kwargs
+        assert call_kwargs["filters"]["label"] == "com.docker.compose.project=my-compose-project"
+
+    def test_docker_connection_error_raises_runtime_error(self) -> None:
+        from app.services.health_check import _check_compose_containers  # type: ignore[attr-defined]
+
+        mock_client = MagicMock()
+        mock_client.ping.side_effect = Exception("connection refused")
+
+        with patch("docker.from_env", return_value=mock_client):
+            with pytest.raises(RuntimeError, match="Tidak dapat terhubung"):
+                _check_compose_containers("myproject")
+
+
+# ---------------------------------------------------------------------------
+# verify_deployment_health — async unit tests (asyncio.sleep di-mock)
+# ---------------------------------------------------------------------------
+
+class TestVerifyDeploymentHealth:
+    """
+    Test verify_deployment_health — dijalankan via asyncio.run() (sync),
+    asyncio.sleep di-mock agar test instan tanpa menunggu.
+    """
+
+    def test_returns_healthy_when_containers_running(self) -> None:
+        import asyncio
+        from app.services.health_check import HealthCheckResult, verify_deployment_health
+
+        healthy_result = HealthCheckResult(healthy=True, containers_checked=2, message="ok")
+
+        async def _run() -> HealthCheckResult:
+            with (
+                patch("asyncio.sleep"),
+                patch("app.services.health_check._check_compose_containers", return_value=healthy_result),
+            ):
+                return await verify_deployment_health("myproject", startup_delay=0)
+
+        result = asyncio.run(_run())
+        assert result.healthy is True
+        assert result.containers_checked == 2
+
+    def test_returns_unhealthy_when_container_exited(self) -> None:
+        import asyncio
+        from app.services.health_check import HealthCheckResult, verify_deployment_health
+
+        unhealthy = HealthCheckResult(
+            healthy=False, containers_checked=1,
+            statuses={"app_1": "exited"}, message="app_1 exited",
+        )
+
+        async def _run() -> HealthCheckResult:
+            with (
+                patch("asyncio.sleep"),
+                patch("app.services.health_check._check_compose_containers", return_value=unhealthy),
+            ):
+                return await verify_deployment_health("myproject", startup_delay=0, retries=1)
+
+        result = asyncio.run(_run())
+        assert result.healthy is False
+        assert result.statuses["app_1"] == "exited"
+
+    def test_retries_on_unhealthy_then_succeeds(self) -> None:
+        import asyncio
+        from app.services.health_check import HealthCheckResult, verify_deployment_health
+
+        call_count = 0
+
+        def side_effect(project: str) -> HealthCheckResult:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                return HealthCheckResult(healthy=False, containers_checked=1, message="not ready")
+            return HealthCheckResult(healthy=True, containers_checked=1, message="ok")
+
+        async def _run() -> HealthCheckResult:
+            with (
+                patch("asyncio.sleep"),
+                patch("app.services.health_check._check_compose_containers", side_effect=side_effect),
+            ):
+                return await verify_deployment_health("myproject", startup_delay=0, retries=3)
+
+        result = asyncio.run(_run())
+        assert result.healthy is True
+        assert call_count == 3
+
+    def test_startup_delay_passed_to_sleep(self) -> None:
+        import asyncio
+        from app.services.health_check import HealthCheckResult, verify_deployment_health
+
+        healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
+        sleep_calls: list[float] = []
+
+        async def fake_sleep(seconds: float) -> None:
+            sleep_calls.append(seconds)
+
+        async def _run() -> HealthCheckResult:
+            with (
+                patch("asyncio.sleep", side_effect=fake_sleep),
+                patch("app.services.health_check._check_compose_containers", return_value=healthy),
+            ):
+                return await verify_deployment_health("proj", startup_delay=5.0, retries=1)
+
+        asyncio.run(_run())
+        assert sleep_calls[0] == 5.0
+
+    def test_zero_startup_delay_calls_sleep_with_zero(self) -> None:
+        import asyncio
+        from app.services.health_check import HealthCheckResult, verify_deployment_health
+
+        healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
+        sleep_calls: list[float] = []
+
+        async def fake_sleep(seconds: float) -> None:
+            sleep_calls.append(seconds)
+
+        async def _run() -> HealthCheckResult:
+            with (
+                patch("asyncio.sleep", side_effect=fake_sleep),
+                patch("app.services.health_check._check_compose_containers", return_value=healthy),
+            ):
+                return await verify_deployment_health("proj", startup_delay=0.0, retries=1)
+
+        asyncio.run(_run())
+        assert sleep_calls[0] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# run_health_check — sync wrapper tests
+# ---------------------------------------------------------------------------
+
+class TestRunHealthCheck:
+    def test_returns_health_check_result(self) -> None:
+        from app.services.health_check import HealthCheckResult, run_health_check
+
+        expected = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
+
+        with patch(
+            "app.services.health_check.verify_deployment_health",
+            return_value=expected,
+        ):
+            # Mock asyncio.run untuk menghindari nested event loop
+            with patch("asyncio.run", return_value=expected):
+                result = run_health_check("myproject", startup_delay=0)
+
+        assert result.healthy is True
+
+    def test_calls_asyncio_run(self) -> None:
+        from app.services.health_check import HealthCheckResult, run_health_check
+
+        expected = HealthCheckResult(healthy=False, containers_checked=0, message="err")
+
+        with patch("asyncio.run", return_value=expected) as mock_run:
+            run_health_check("proj", startup_delay=0, retries=1)
+
+        mock_run.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _run_deployment integration dengan health check
+# ---------------------------------------------------------------------------
+
+class TestRunDeploymentWithHealthCheck:
+    """Test integrasi _run_deployment + health check — semua dep di-mock."""
+
+    _patches: dict[str, str] = {
+        "clone": "app.services.deployment_service.git_service.clone_repository",
+        "cleanup": "app.services.deployment_service.git_service.cleanup",
+        "run_compose": "app.services.deployment_service._run_compose",
+        "write_env": "app.services.deployment_service._write_env_file",
+        "update_status": "app.services.deployment_service.deployment_repository.update_status",
+        "list_env": "app.services.deployment_service.env_var_repository.list_by_project",
+        "health_check": "app.services.deployment_service.health_check_service.run_health_check",
+    }
+
+    def _healthy(self) -> MagicMock:
+        from app.services.health_check import HealthCheckResult
+        r = MagicMock(spec=HealthCheckResult)
+        r.healthy = True
+        r.containers_checked = 2
+        r.message = "All healthy"
+        return r
+
+    def _unhealthy(self, status_val: str = "exited") -> MagicMock:
+        from app.services.health_check import HealthCheckResult
+        r = MagicMock(spec=HealthCheckResult)
+        r.healthy = False
+        r.containers_checked = 1
+        r.statuses = {"app_1": status_val}
+        r.message = f"app_1 is {status_val}"
+        return r
+
+    def test_healthy_result_sets_status_success(self) -> None:
+        from app.services.deployment_service import _run_deployment  # type: ignore[attr-defined]
+
+        db = MagicMock()
+        app = _make_app()
+        server = _make_server()
+        deployment = _make_deployment()
+
+        with (
+            patch(self._patches["clone"], return_value=_make_clone_result()),
+            patch(self._patches["cleanup"]),
+            patch(self._patches["run_compose"], return_value=("ok", "")),
+            patch(self._patches["write_env"]),
+            patch(self._patches["list_env"], return_value=[]),
+            patch(self._patches["health_check"], return_value=self._healthy()),
+            patch(self._patches["update_status"]) as mock_update,
+        ):
+            _run_deployment(db, deployment, app, server)
+
+        statuses = [c.args[2] for c in mock_update.call_args_list]
+        assert DeploymentStatus.success in statuses
+        assert DeploymentStatus.failed not in statuses
+
+    def test_exited_container_sets_status_failed(self) -> None:
+        from app.services.deployment_service import _run_deployment  # type: ignore[attr-defined]
+
+        db = MagicMock()
+        app = _make_app()
+        server = _make_server()
+        deployment = _make_deployment()
+
+        with (
+            patch(self._patches["clone"], return_value=_make_clone_result()),
+            patch(self._patches["cleanup"]),
+            patch(self._patches["run_compose"], return_value=("ok", "")),
+            patch(self._patches["write_env"]),
+            patch(self._patches["list_env"], return_value=[]),
+            patch(self._patches["health_check"], return_value=self._unhealthy("exited")),
+            patch(self._patches["update_status"]) as mock_update,
+        ):
+            with pytest.raises(RuntimeError, match="Health check gagal"):
+                _run_deployment(db, deployment, app, server)
+
+        statuses = [c.args[2] for c in mock_update.call_args_list]
+        assert DeploymentStatus.failed in statuses
+        assert DeploymentStatus.success not in statuses
+
+    def test_restarting_container_sets_status_failed(self) -> None:
+        from app.services.deployment_service import _run_deployment  # type: ignore[attr-defined]
+
+        db = MagicMock()
+        app = _make_app()
+        server = _make_server()
+        deployment = _make_deployment()
+
+        with (
+            patch(self._patches["clone"], return_value=_make_clone_result()),
+            patch(self._patches["cleanup"]),
+            patch(self._patches["run_compose"], return_value=("ok", "")),
+            patch(self._patches["write_env"]),
+            patch(self._patches["list_env"], return_value=[]),
+            patch(self._patches["health_check"], return_value=self._unhealthy("restarting")),
+            patch(self._patches["update_status"]) as mock_update,
+        ):
+            with pytest.raises(RuntimeError):
+                _run_deployment(db, deployment, app, server)
+
+        statuses = [c.args[2] for c in mock_update.call_args_list]
+        assert DeploymentStatus.failed in statuses
+
+    def test_no_containers_found_sets_status_failed(self) -> None:
+        from app.services.health_check import HealthCheckResult
+        from app.services.deployment_service import _run_deployment  # type: ignore[attr-defined]
+
+        db = MagicMock()
+        app = _make_app()
+        server = _make_server()
+        deployment = _make_deployment()
+
+        no_container = HealthCheckResult(
+            healthy=False,
+            containers_checked=0,
+            message="Tidak ada container ditemukan",
+        )
+
+        with (
+            patch(self._patches["clone"], return_value=_make_clone_result()),
+            patch(self._patches["cleanup"]),
+            patch(self._patches["run_compose"], return_value=("ok", "")),
+            patch(self._patches["write_env"]),
+            patch(self._patches["list_env"], return_value=[]),
+            patch(self._patches["health_check"], return_value=no_container),
+            patch(self._patches["update_status"]) as mock_update,
+        ):
+            with pytest.raises(RuntimeError):
+                _run_deployment(db, deployment, app, server)
+
+        statuses = [c.args[2] for c in mock_update.call_args_list]
+        assert DeploymentStatus.failed in statuses
+
+    def test_health_check_called_with_compose_project(self) -> None:
+        from app.services.deployment_service import _run_deployment  # type: ignore[attr-defined]
+
+        db = MagicMock()
+        app = _make_app()
+        server = _make_server()
+        deployment = _make_deployment()
+        clone_result = _make_clone_result()
+
+        with (
+            patch(self._patches["clone"], return_value=clone_result),
+            patch(self._patches["cleanup"]),
+            patch(self._patches["run_compose"], return_value=("ok", "")),
+            patch(self._patches["write_env"]),
+            patch(self._patches["list_env"], return_value=[]),
+            patch(self._patches["health_check"], return_value=self._healthy()) as mock_hc,
+            patch(self._patches["update_status"]),
+        ):
+            _run_deployment(db, deployment, app, server)
+
+        # compose_project harus = nama direktori clone
+        call_kwargs = mock_hc.call_args.kwargs
+        assert call_kwargs["compose_project"] == clone_result.repo_dir.name
+
+
+# ---------------------------------------------------------------------------
+# Manual health-check endpoint tests
+# ---------------------------------------------------------------------------
+
+class TestManualHealthCheckEndpoint:
+    def _setup(self, client: object) -> tuple[dict[str, str], int]:
+        """Buat user + deployment sukses, return (headers, deployment_id)."""
+        import uuid
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+
+        suffix = uuid.uuid4().hex[:8]
+        user = {"username": f"hc_{suffix}", "email": f"hc_{suffix}@x.com", "password": "pass1234"}
+        c.post("/auth/register", json=user)
+        r = c.post("/auth/login", data={"username": user["username"], "password": user["password"]})
+        headers = {"Authorization": f"Bearer {r.json()['data']['access_token']}"}
+
+        proj_id = c.post("/projects", json={"name": f"p{suffix}", "description": "t"}, headers=headers).json()["data"]["id"]
+        srv_id = c.post("/servers", json={"name": "s", "host": "1.2.3.4", "port": 22, "username": "u", "auth_type": "password", "password": "x"}, headers=headers).json()["data"]["id"]
+        app_id = c.post("/applications", json={"project_id": proj_id, "name": "a", "repository": "https://github.com/org/repo.git", "branch": "main"}, headers=headers).json()["data"]["id"]
+
+        from app.services.health_check import HealthCheckResult
+        healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
+
+        with (
+            patch("app.services.deployment_service.git_service.clone_repository", return_value=_make_clone_result()),
+            patch("app.services.deployment_service.git_service.cleanup"),
+            patch("app.services.deployment_service._run_compose", return_value=("ok", "")),
+            patch("app.services.deployment_service.health_check_service.run_health_check", return_value=healthy),
+        ):
+            dep_r = c.post("/deployments", json={"application_id": app_id, "server_id": srv_id}, headers=headers)
+
+        dep_id = dep_r.json()["data"]["id"]
+        return headers, dep_id
+
+    def test_manual_health_check_running_returns_200_healthy(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        from app.services.health_check import HealthCheckResult
+        c: TestClient = client  # type: ignore[assignment]
+        headers, dep_id = self._setup(c)
+
+        healthy = HealthCheckResult(
+            healthy=True,
+            containers_checked=2,
+            statuses={"web_1": "running", "db_1": "running"},
+            message="All healthy",
+        )
+        with patch("app.services.health_check.run_health_check", return_value=healthy):
+            r = c.post(f"/deployments/{dep_id}/health-check", headers=headers)
+
+        assert r.status_code == 200
+        data = r.json()["data"]
+        assert data["healthy"] is True
+        assert data["containers_checked"] == 2
+        assert data["statuses"]["web_1"] == "running"
+
+    def test_manual_health_check_exited_returns_200_unhealthy(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        from app.services.health_check import HealthCheckResult
+        c: TestClient = client  # type: ignore[assignment]
+        headers, dep_id = self._setup(c)
+
+        unhealthy = HealthCheckResult(
+            healthy=False,
+            containers_checked=1,
+            statuses={"app_1": "exited"},
+            message="app_1 exited",
+        )
+        with patch("app.services.health_check.run_health_check", return_value=unhealthy):
+            r = c.post(f"/deployments/{dep_id}/health-check", headers=headers)
+
+        assert r.status_code == 200
+        data = r.json()["data"]
+        assert data["healthy"] is False
+        assert data["statuses"]["app_1"] == "exited"
+
+    def test_manual_health_check_not_found_returns_404(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, _ = self._setup(c)
+        r = c.post("/deployments/99999/health-check", headers=headers)
+        assert r.status_code == 404
+
+    def test_manual_health_check_without_auth_returns_401(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        r = c.post("/deployments/1/health-check")
+        assert r.status_code == 401
+
+    def test_manual_health_check_other_user_returns_404(self, client: object) -> None:
+        """User lain tidak boleh akses health-check milik user pertama."""
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        _, dep_id = self._setup(c)
+
+        # Login sebagai user baru
+        import uuid
+        suffix = uuid.uuid4().hex[:8]
+        user_b = {"username": f"hcb_{suffix}", "email": f"hcb_{suffix}@x.com", "password": "pass1234"}
+        c.post("/auth/register", json=user_b)
+        r = c.post("/auth/login", data={"username": user_b["username"], "password": user_b["password"]})
+        headers_b = {"Authorization": f"Bearer {r.json()['data']['access_token']}"}
+
+        r2 = c.post(f"/deployments/{dep_id}/health-check", headers=headers_b)
+        assert r2.status_code == 404
+
+    def test_manual_health_check_docker_error_returns_503(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, dep_id = self._setup(c)
+
+        with patch(
+            "app.services.health_check.run_health_check",
+            side_effect=RuntimeError("Docker daemon not reachable"),
+        ):
+            r = c.post(f"/deployments/{dep_id}/health-check", headers=headers)
+
+        assert r.status_code == 503

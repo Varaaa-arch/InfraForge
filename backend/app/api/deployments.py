@@ -22,9 +22,10 @@ from app.core.audit import log_audit
 from app.database.session import get_db
 from app.models.deployment import DeploymentStatus
 from app.models.user import User
-from app.schemas.deployment import DeploymentCreate, DeploymentResponse
+from app.schemas.deployment import DeploymentCreate, DeploymentResponse, HealthCheckResponse
 from app.schemas.response import ApiResponse
 from app.services import application_service, deployment_service, project_service
+from app.services import health_check as health_check_service
 
 router = APIRouter(prefix="/deployments", tags=["deployments"])
 
@@ -184,3 +185,54 @@ def get_deployment(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Deployment not found")
 
     return ApiResponse(data=DeploymentResponse.model_validate(deployment))
+
+
+@router.post(
+    "/{deployment_id}/health-check",
+    response_model=ApiResponse[HealthCheckResponse],
+    summary="Manual health check deployment",
+    description=(
+        "Memaksa pengecekan ulang status container dari sebuah deployment. "
+        "Berguna untuk verifikasi manual setelah deployment atau debugging. "
+        "Health check langsung dijalankan tanpa startup delay.\n\n"
+        "- Status `healthy` jika semua container **running** atau **healthy**.\n"
+        "- Status `unhealthy` jika ada container **exited**, **restarting**, "
+        "atau tidak ditemukan."
+    ),
+    responses={
+        200: {"description": "Hasil health check (healthy atau unhealthy)"},
+        404: {"description": "Deployment tidak ditemukan atau bukan milik user"},
+        503: {"description": "Tidak dapat terhubung ke Docker daemon"},
+    },
+)
+def manual_health_check(
+    deployment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiResponse[HealthCheckResponse]:
+    deployment = deployment_service.get_deployment(db, deployment_id)
+    if deployment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Deployment not found")
+
+    owned_ids = _get_owned_app_ids(current_user, db)
+    if deployment.application_id not in owned_ids:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Deployment not found")
+
+    try:
+        result = health_check_service.run_health_check(
+            compose_project=f"deployment_{deployment_id}",
+            startup_delay=0.0,
+            retries=1,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
+
+    return ApiResponse(
+        data=HealthCheckResponse(
+            deployment_id=deployment_id,
+            healthy=result.healthy,
+            containers_checked=result.containers_checked,
+            statuses=result.statuses,
+            message=result.message,
+        )
+    )

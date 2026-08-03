@@ -72,3 +72,16 @@ class DeploymentResponse(BaseModel):
             delta = self.finished_at - self.started_at
             self.duration = round(delta.total_seconds(), 2)
         return self
+
+
+class HealthCheckResponse(BaseModel):
+    """Response untuk endpoint POST /deployments/{id}/health-check."""
+
+    deployment_id: int
+    healthy: bool
+    containers_checked: int
+    statuses: dict[str, str] = Field(
+        default_factory=dict,
+        description="Mapping nama_container → status (running/exited/dll)",
+    )
+    message: str
