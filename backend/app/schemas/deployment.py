@@ -1,16 +1,17 @@
 """
-Pydantic schemas untuk Deployment Flow (Task 3.6).
+Pydantic schemas untuk Deployment Flow (Task 3.6 + 3.7).
 
-Tiga schema utama:
-- DeploymentCreate  : payload POST /deployments (trigger deployment baru)
-- DeploymentResponse: response publik semua endpoint deployment
+Schemas:
+- DeploymentCreate  : payload POST /deployments
+- DeploymentResponse: response publik semua endpoint, termasuk field `duration`
+                      yang dihitung secara computed dari finished_at - started_at.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.deployment import DeploymentStatus
 
@@ -37,7 +38,13 @@ class DeploymentCreate(BaseModel):
 
 
 class DeploymentResponse(BaseModel):
-    """Response publik untuk semua endpoint deployment."""
+    """
+    Response publik untuk semua endpoint deployment.
+
+    Field `duration` adalah computed field (bukan kolom DB) yang
+    dihitung dari selisih `finished_at - started_at` dalam detik.
+    Bernilai `None` jika deployment masih berjalan (finished_at belum diset).
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -50,3 +57,18 @@ class DeploymentResponse(BaseModel):
     log_path: str | None
     started_at: datetime
     finished_at: datetime | None
+    duration: float | None = Field(
+        default=None,
+        description=(
+            "Durasi deployment dalam detik. "
+            "None jika deployment masih berjalan (finished_at belum diset)."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def compute_duration(self) -> "DeploymentResponse":
+        """Hitung durasi otomatis dari finished_at - started_at."""
+        if self.finished_at is not None:
+            delta = self.finished_at - self.started_at
+            self.duration = round(delta.total_seconds(), 2)
+        return self

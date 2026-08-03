@@ -830,3 +830,493 @@ class TestDeploymentEndpoints:
         headers_b = self._register_and_login(c)
         r = c.get(f"/deployments/{dep_id}", headers=headers_b)
         assert r.status_code == 404
+
+
+# ==========================================================================
+# Task 3.7 — Tests tambahan: filter, pagination, duration, commit_sha
+# ==========================================================================
+
+# ---------------------------------------------------------------------------
+# Repository — filter & pagination unit tests
+# ---------------------------------------------------------------------------
+
+class TestDeploymentRepositoryFilter:
+    """
+    Test repository layer filter & pagination.
+
+    Menggunakan deployment_service.trigger_deployment (dengan mock) via
+    TestClient agar FK constraints (application_id, server_id) terpenuhi,
+    lalu query langsung ke repository untuk validasi filter/pagination.
+    """
+
+    def _setup(self, client: object) -> tuple[dict[str, str], int, int]:
+        """Buat user, project, server, app — return (headers, app_id, server_id)."""
+        import uuid
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        suffix = uuid.uuid4().hex[:8]
+        user = {"username": f"rep_{suffix}", "email": f"rep_{suffix}@x.com", "password": "pass1234"}
+        c.post("/auth/register", json=user)
+        r = c.post("/auth/login", data={"username": user["username"], "password": user["password"]})
+        headers = {"Authorization": f"Bearer {r.json()['data']['access_token']}"}
+        proj_id = c.post("/projects", json={"name": f"p{suffix}", "description": "t"}, headers=headers).json()["data"]["id"]
+        srv_id = c.post("/servers", json={"name": "s", "host": "1.2.3.4", "port": 22, "username": "u", "auth_type": "password", "password": "x"}, headers=headers).json()["data"]["id"]
+        app_id = c.post("/applications", json={"project_id": proj_id, "name": "a", "repository": "https://github.com/org/repo.git", "branch": "main"}, headers=headers).json()["data"]["id"]
+        return headers, app_id, srv_id
+
+    def _deploy(self, client: object, headers: dict[str, str], app_id: int, server_id: int) -> int:
+        """Trigger deployment via API (mocked), kembalikan deployment id."""
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        clone_result = _make_clone_result()
+        with (
+            patch("app.services.deployment_service.git_service.clone_repository", return_value=clone_result),
+            patch("app.services.deployment_service.git_service.cleanup"),
+            patch("app.services.deployment_service._run_compose", return_value=("ok", "")),
+        ):
+            r = c.post("/deployments", json={"application_id": app_id, "server_id": server_id}, headers=headers)
+        return int(r.json()["data"]["id"])
+
+    def test_list_all_returns_only_owned_app_ids(self, client: object, db_session: object) -> None:
+        from sqlalchemy.orm import Session as SASession
+        from app.repositories import deployment_repository
+        headers, app_id, srv_id = self._setup(client)
+        self._deploy(client, headers, app_id, srv_id)
+
+        db: SASession = db_session  # type: ignore[assignment]
+        result = deployment_repository.list_all(db, [app_id])
+        assert all(d.application_id == app_id for d in result)  # type: ignore[union-attr]
+
+    def test_list_all_filter_by_status_success(self, client: object, db_session: object) -> None:
+        from sqlalchemy.orm import Session as SASession
+        from app.repositories import deployment_repository
+        headers, app_id, srv_id = self._setup(client)
+        self._deploy(client, headers, app_id, srv_id)
+
+        db: SASession = db_session  # type: ignore[assignment]
+        result = deployment_repository.list_all(db, [app_id], status=DeploymentStatus.success)
+        assert len(result) >= 1
+        assert all(d.status == DeploymentStatus.success for d in result)  # type: ignore[union-attr]
+
+    def test_list_all_filter_by_status_failed_returns_empty(self, client: object, db_session: object) -> None:
+        from sqlalchemy.orm import Session as SASession
+        from app.repositories import deployment_repository
+        headers, app_id, srv_id = self._setup(client)
+        self._deploy(client, headers, app_id, srv_id)
+
+        db: SASession = db_session  # type: ignore[assignment]
+        result = deployment_repository.list_all(db, [app_id], status=DeploymentStatus.failed)
+        assert result == []
+
+    def test_list_all_filter_by_server_id(self, client: object, db_session: object) -> None:
+        from sqlalchemy.orm import Session as SASession
+        from app.repositories import deployment_repository
+        headers, app_id, srv_id = self._setup(client)
+        self._deploy(client, headers, app_id, srv_id)
+
+        db: SASession = db_session  # type: ignore[assignment]
+        result = deployment_repository.list_all(db, [app_id], server_id=srv_id)
+        assert all(d.server_id == srv_id for d in result)  # type: ignore[union-attr]
+
+    def test_list_all_pagination_limit(self, client: object, db_session: object) -> None:
+        from sqlalchemy.orm import Session as SASession
+        from app.repositories import deployment_repository
+        headers, app_id, srv_id = self._setup(client)
+        for _ in range(3):
+            self._deploy(client, headers, app_id, srv_id)
+
+        db: SASession = db_session  # type: ignore[assignment]
+        result = deployment_repository.list_all(db, [app_id], limit=2)
+        assert len(result) == 2
+
+    def test_list_all_pagination_offset(self, client: object, db_session: object) -> None:
+        from sqlalchemy.orm import Session as SASession
+        from app.repositories import deployment_repository
+        headers, app_id, srv_id = self._setup(client)
+        for _ in range(3):
+            self._deploy(client, headers, app_id, srv_id)
+
+        db: SASession = db_session  # type: ignore[assignment]
+        all_r = deployment_repository.list_all(db, [app_id], limit=10, offset=0)
+        off_r = deployment_repository.list_all(db, [app_id], limit=10, offset=1)
+        assert len(off_r) == len(all_r) - 1
+
+    def test_list_all_empty_when_no_app_ids(self, db_session: object) -> None:
+        from sqlalchemy.orm import Session as SASession
+        from app.repositories import deployment_repository
+        db: SASession = db_session  # type: ignore[assignment]
+        assert deployment_repository.list_all(db, []) == []
+
+    def test_list_by_application_filter_status(self, client: object, db_session: object) -> None:
+        from sqlalchemy.orm import Session as SASession
+        from app.repositories import deployment_repository
+        headers, app_id, srv_id = self._setup(client)
+        self._deploy(client, headers, app_id, srv_id)
+
+        db: SASession = db_session  # type: ignore[assignment]
+        result = deployment_repository.list_by_application(db, app_id, status=DeploymentStatus.success)
+        assert len(result) >= 1
+        assert all(d.status == DeploymentStatus.success for d in result)  # type: ignore[union-attr]
+
+    def test_list_by_application_pagination(self, client: object, db_session: object) -> None:
+        from sqlalchemy.orm import Session as SASession
+        from app.repositories import deployment_repository
+        headers, app_id, srv_id = self._setup(client)
+        for _ in range(4):
+            self._deploy(client, headers, app_id, srv_id)
+
+        db: SASession = db_session  # type: ignore[assignment]
+        page1 = deployment_repository.list_by_application(db, app_id, limit=2, offset=0)
+        page2 = deployment_repository.list_by_application(db, app_id, limit=2, offset=2)
+        assert len(page1) == 2
+        assert len(page2) == 2
+        ids1 = {d.id for d in page1}  # type: ignore[union-attr]
+        ids2 = {d.id for d in page2}  # type: ignore[union-attr]
+        assert ids1.isdisjoint(ids2)
+
+    def test_update_status_sets_finished_at_and_commit_sha(self, client: object, db_session: object) -> None:
+        from sqlalchemy.orm import Session as SASession
+        from app.repositories import deployment_repository
+        headers, app_id, srv_id = self._setup(client)
+        dep_id = self._deploy(client, headers, app_id, srv_id)
+
+        db: SASession = db_session  # type: ignore[assignment]
+        dep = deployment_repository.get_by_id(db, dep_id)
+        assert dep is not None
+        assert dep.finished_at is not None   # success → finished_at diset
+        assert dep.commit_sha is not None    # clone_result.commit_sha disimpan
+
+    def test_update_status_no_finished_at_for_deploying(self, client: object, db_session: object) -> None:
+        """Saat status masih deploying, finished_at harus None."""
+        from sqlalchemy.orm import Session as SASession
+        from app.repositories import deployment_repository
+        headers, app_id, srv_id = self._setup(client)
+
+        db: SASession = db_session  # type: ignore[assignment]
+        # Buat deployment pending, lalu set deploying (non-terminal)
+        dep = deployment_repository.create(db, app_id, srv_id, "main")
+        updated = deployment_repository.update_status(db, dep, DeploymentStatus.deploying)
+        assert updated.finished_at is None
+
+
+# ---------------------------------------------------------------------------
+# Schema — duration computed field
+# ---------------------------------------------------------------------------
+
+class TestDeploymentResponseDuration:
+    def test_duration_computed_when_finished_at_set(self) -> None:
+        from datetime import timezone
+        from app.schemas.deployment import DeploymentResponse
+
+        now = datetime.now(tz=timezone.utc)
+        started = now.replace(second=0, microsecond=0)
+        finished = started.replace(second=30)
+
+        resp = DeploymentResponse(
+            id=1,
+            application_id=1,
+            server_id=1,
+            status=DeploymentStatus.success,
+            branch="main",
+            commit_sha="abc123",
+            log_path=None,
+            started_at=started,
+            finished_at=finished,
+        )
+        assert resp.duration == 30.0
+
+    def test_duration_none_when_not_finished(self) -> None:
+        from datetime import timezone
+        from app.schemas.deployment import DeploymentResponse
+
+        resp = DeploymentResponse(
+            id=1,
+            application_id=1,
+            server_id=None,
+            status=DeploymentStatus.deploying,
+            branch="main",
+            commit_sha=None,
+            log_path=None,
+            started_at=datetime.now(tz=timezone.utc),
+            finished_at=None,
+        )
+        assert resp.duration is None
+
+    def test_duration_sub_second_precision(self) -> None:
+        from datetime import timedelta, timezone
+        from app.schemas.deployment import DeploymentResponse
+
+        started = datetime.now(tz=timezone.utc)
+        finished = started + timedelta(seconds=123, milliseconds=456)
+
+        resp = DeploymentResponse(
+            id=1,
+            application_id=1,
+            server_id=1,
+            status=DeploymentStatus.success,
+            branch="main",
+            commit_sha=None,
+            log_path=None,
+            started_at=started,
+            finished_at=finished,
+        )
+        assert resp.duration == pytest.approx(123.456, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# API endpoint — filter & pagination integration tests
+# ---------------------------------------------------------------------------
+
+class TestDeploymentEndpointsFilter:
+    """Test endpoint HTTP untuk fitur filter & pagination Task 3.7."""
+
+    def _setup(self, client: object) -> tuple[dict[str, str], int, int, int]:
+        """
+        Buat user, project, server, app — kembalikan
+        (headers, server_id, app_id, project_id).
+        """
+        import uuid
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+
+        suffix = uuid.uuid4().hex[:8]
+        user = {
+            "username": f"flt_{suffix}",
+            "email": f"flt_{suffix}@x.com",
+            "password": "pass1234",
+        }
+        c.post("/auth/register", json=user)
+        r = c.post(
+            "/auth/login",
+            data={"username": user["username"], "password": user["password"]},
+        )
+        headers = {"Authorization": f"Bearer {r.json()['data']['access_token']}"}
+
+        proj_r = c.post(
+            "/projects",
+            json={"name": f"p-{suffix}", "description": "t"},
+            headers=headers,
+        )
+        project_id = proj_r.json()["data"]["id"]
+
+        srv_r = c.post(
+            "/servers",
+            json={
+                "name": "srv",
+                "host": "1.2.3.4",
+                "port": 22,
+                "username": "ubuntu",
+                "auth_type": "password",
+                "password": "x",
+            },
+            headers=headers,
+        )
+        server_id = srv_r.json()["data"]["id"]
+
+        app_r = c.post(
+            "/applications",
+            json={
+                "project_id": project_id,
+                "name": "myapp",
+                "repository": "https://github.com/org/repo.git",
+                "branch": "main",
+            },
+            headers=headers,
+        )
+        app_id = app_r.json()["data"]["id"]
+        return headers, server_id, app_id, project_id
+
+    def _deploy(
+        self, client: object, headers: dict[str, str], app_id: int, server_id: int
+    ) -> dict[str, object]:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        clone_result = _make_clone_result()
+        with (
+            patch(
+                "app.services.deployment_service.git_service.clone_repository",
+                return_value=clone_result,
+            ),
+            patch("app.services.deployment_service.git_service.cleanup"),
+            patch(
+                "app.services.deployment_service._run_compose",
+                return_value=("ok", ""),
+            ),
+        ):
+            r = c.post(
+                "/deployments",
+                json={"application_id": app_id, "server_id": server_id},
+                headers=headers,
+            )
+        return r.json()["data"]  # type: ignore[return-value]
+
+    def test_filter_by_status_success(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, server_id, app_id, _ = self._setup(c)
+
+        # Buat 1 deployment sukses
+        self._deploy(c, headers, app_id, server_id)
+
+        r = c.get("/deployments?status=success", headers=headers)
+        assert r.status_code == 200
+        data = r.json()["data"]
+        assert len(data) >= 1
+        assert all(d["status"] == "success" for d in data)
+
+    def test_filter_by_status_failed_returns_empty_when_none(
+        self, client: object
+    ) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, server_id, app_id, _ = self._setup(c)
+
+        # Buat deployment sukses saja
+        self._deploy(c, headers, app_id, server_id)
+
+        r = c.get("/deployments?status=failed", headers=headers)
+        assert r.status_code == 200
+        # User baru, tidak ada deployment failed
+        assert all(d["status"] == "failed" for d in r.json()["data"])
+
+    def test_filter_by_application_id_and_status(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, server_id, app_id, _ = self._setup(c)
+
+        self._deploy(c, headers, app_id, server_id)
+
+        r = c.get(
+            f"/deployments?application_id={app_id}&status=success",
+            headers=headers,
+        )
+        assert r.status_code == 200
+        data = r.json()["data"]
+        assert all(
+            d["application_id"] == app_id and d["status"] == "success"
+            for d in data
+        )
+
+    def test_pagination_limit(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, server_id, app_id, _ = self._setup(c)
+
+        # Buat 3 deployment
+        for _ in range(3):
+            self._deploy(c, headers, app_id, server_id)
+
+        r = c.get(
+            f"/deployments?application_id={app_id}&limit=2", headers=headers
+        )
+        assert r.status_code == 200
+        assert len(r.json()["data"]) == 2
+
+    def test_pagination_offset(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, server_id, app_id, _ = self._setup(c)
+
+        for _ in range(3):
+            self._deploy(c, headers, app_id, server_id)
+
+        r_all = c.get(
+            f"/deployments?application_id={app_id}&limit=10&offset=0",
+            headers=headers,
+        )
+        r_offset = c.get(
+            f"/deployments?application_id={app_id}&limit=10&offset=1",
+            headers=headers,
+        )
+        assert len(r_offset.json()["data"]) == len(r_all.json()["data"]) - 1
+
+    def test_response_includes_duration_on_finished_deployment(
+        self, client: object
+    ) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, server_id, app_id, _ = self._setup(c)
+
+        dep = self._deploy(c, headers, app_id, server_id)
+        dep_id = dep["id"]
+
+        r = c.get(f"/deployments/{dep_id}", headers=headers)
+        assert r.status_code == 200
+        data = r.json()["data"]
+        # Deployment sukses harus punya finished_at dan duration >= 0
+        assert data["finished_at"] is not None
+        assert data["duration"] is not None
+        assert data["duration"] >= 0.0
+
+    def test_response_duration_none_for_in_progress_deployment(
+        self, client: object
+    ) -> None:
+        """Duration harus None ketika finished_at belum diset (pending/deploying)."""
+        from app.schemas.deployment import DeploymentResponse
+        from datetime import timezone
+
+        resp = DeploymentResponse(
+            id=99,
+            application_id=1,
+            server_id=1,
+            status=DeploymentStatus.deploying,
+            branch="main",
+            commit_sha=None,
+            log_path=None,
+            started_at=datetime.now(tz=timezone.utc),
+            finished_at=None,
+        )
+        assert resp.duration is None
+
+    def test_response_includes_commit_sha_after_success(
+        self, client: object
+    ) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, server_id, app_id, _ = self._setup(c)
+
+        clone_result = _make_clone_result(sha="cafebabe12345678")
+        with (
+            patch(
+                "app.services.deployment_service.git_service.clone_repository",
+                return_value=clone_result,
+            ),
+            patch("app.services.deployment_service.git_service.cleanup"),
+            patch(
+                "app.services.deployment_service._run_compose",
+                return_value=("ok", ""),
+            ),
+        ):
+            r = c.post(
+                "/deployments",
+                json={"application_id": app_id, "server_id": server_id},
+                headers=headers,
+            )
+
+        dep_id = r.json()["data"]["id"]
+        detail = c.get(f"/deployments/{dep_id}", headers=headers)
+        assert detail.json()["data"]["commit_sha"] == "cafebabe12345678"
+
+    def test_invalid_status_filter_returns_422(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, _, _, _ = self._setup(c)
+
+        r = c.get("/deployments?status=invalid_status", headers=headers)
+        assert r.status_code == 422
+
+    def test_negative_offset_returns_422(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, _, _, _ = self._setup(c)
+
+        r = c.get("/deployments?offset=-1", headers=headers)
+        assert r.status_code == 422
+
+    def test_limit_exceeds_max_returns_422(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers, _, _, _ = self._setup(c)
+
+        r = c.get("/deployments?limit=9999", headers=headers)
+        assert r.status_code == 422

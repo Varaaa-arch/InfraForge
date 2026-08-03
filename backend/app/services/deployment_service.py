@@ -222,19 +222,42 @@ def get_deployment(db: Session, deployment_id: int) -> Deployment | None:
 def list_deployments(
     db: Session,
     application_ids: list[int],
+    *,
+    server_id: int | None = None,
+    status: DeploymentStatus | None = None,
     limit: int = 100,
+    offset: int = 0,
 ) -> list[Deployment]:
     """
     Daftar deployment history untuk sekumpulan application_id.
-    Digunakan router untuk menampilkan history milik user yang login.
+    Mendukung filter opsional (server_id, status) dan pagination (limit/offset).
     """
-    return deployment_repository.list_all(db, application_ids, limit=limit)
+    return deployment_repository.list_all(
+        db,
+        application_ids,
+        server_id=server_id,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
 
 
 def list_deployments_by_application(
     db: Session,
     application_id: int,
+    *,
+    status: DeploymentStatus | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[Deployment]:
-    """Daftar deployment history untuk satu aplikasi."""
-    return deployment_repository.list_by_application(db, application_id, limit=limit)
+    """
+    Daftar deployment history untuk satu aplikasi.
+    Mendukung filter status dan pagination.
+    """
+    return deployment_repository.list_by_application(
+        db,
+        application_id,
+        status=status,
+        limit=limit,
+        offset=offset,
+    )
