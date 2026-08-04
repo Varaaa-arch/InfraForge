@@ -1,22 +1,29 @@
 """
-Deployment Service — orkestrasi alur deployment (Task 3.6 + Task 3.8).
+Deployment Service — orkestrasi alur deployment (Task 3.6 + Task 3.8 + Task 3.9).
 
 Alur eksekusi `_run_deployment`:
   1. Set status → deploying.
-  2. Validasi konfigurasi (repository URL wajib ada).
-  3. Clone repository via git_service (ke tmp/).
-  4. Inject env vars dari DB ke .env di direktori clone.
-  5. Jalankan docker compose build + up -d.
-  6. Panggil run_health_check → cek status container setelah startup.
-  7. Jika healthy → set status success.
+  2. Buat log file di tmp/ dan simpan log_path ke DB.
+  3. Validasi konfigurasi (repository URL wajib ada).
+  4. Clone repository via git_service (ke tmp/).
+  5. Inject env vars dari DB ke .env di direktori clone.
+  6. Jalankan docker compose build + up -d (output ditulis ke log file).
+  7. Panggil run_health_check → cek status container setelah startup.
+  8. Jika healthy → set status success.
      Jika unhealthy → raise RuntimeError → set status failed.
-  8. Jika ada Exception → set status failed, re-raise.
-  9. Cleanup tmp/ di finally block.
+  9. Jika ada Exception → set status failed, re-raise.
+ 10. Cleanup tmp/ di finally block.
+
+Log file:
+  Setiap baris output dari git clone / docker compose ditulis ke file
+  tmp/deployment_<id>.log sehingga WebSocket handler bisa meng-stream-nya
+  ke client secara real-time.
 """
 
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from pathlib import Path
 
 from loguru import logger
@@ -38,6 +45,33 @@ from app.services import health_check as health_check_service
 # Internal helpers (dipisah agar bisa di-mock di unit test)
 # ---------------------------------------------------------------------------
 
+def _make_log_file(deployment_id: int) -> Path:
+    """
+    Buat file log kosong di direktori tmp sistem.
+
+    File dibuat dengan nama deterministik `deployment_<id>.log` sehingga
+    WebSocket handler bisa menemukan file ini berdasarkan deployment_id.
+
+    Returns:
+        Path ke file log yang sudah dibuat.
+    """
+    tmp_dir = Path(tempfile.gettempdir())
+    log_file = tmp_dir / f"deployment_{deployment_id}.log"
+    log_file.touch()
+    return log_file
+
+
+def _append_log(log_file: Path, text: str) -> None:
+    """
+    Tulis/append teks ke file log deployment.
+
+    Setiap pemanggilan disambung ke akhir file (mode 'a').
+    Baris kosong dan spasi trailing tetap ditulis apa adanya.
+    """
+    with log_file.open("a", encoding="utf-8") as f:
+        f.write(text)
+
+
 def _write_env_file(repo_dir: Path, env_vars: dict[str, str]) -> Path:
     """
     Tulis dictionary key=value ke file `.env` di dalam `repo_dir`.
@@ -50,13 +84,21 @@ def _write_env_file(repo_dir: Path, env_vars: dict[str, str]) -> Path:
     return env_file
 
 
-def _run_compose(repo_dir: Path, compose_file: str) -> tuple[str, str]:
+def _run_compose(
+    repo_dir: Path,
+    compose_file: str,
+    log_file: Path | None = None,
+) -> tuple[str, str]:
     """
     Jalankan `docker compose -f <compose_file> build` lalu
     `docker compose -f <compose_file> up -d` via subprocess.
 
+    Output (stdout + stderr) setiap perintah ditulis ke `log_file` jika
+    diberikan, sehingga WebSocket handler bisa meng-stream log secara
+    real-time.
+
     Returns:
-        Tuple (stdout_build + stdout_up, stderr_build + stderr_up).
+        Tuple (stdout_combined, stderr_combined).
 
     Raises:
         RuntimeError jika salah satu perintah exit non-zero.
@@ -68,7 +110,11 @@ def _run_compose(repo_dir: Path, compose_file: str) -> tuple[str, str]:
         ["docker", "compose", "-f", compose_file, "build", "--no-cache"],
         ["docker", "compose", "-f", compose_file, "up", "-d"],
     ]:
+        header = f"[InfraForge] Running: {' '.join(args)}\n"
         logger.info(f"Running: {' '.join(args)} in {repo_dir}")
+        if log_file is not None:
+            _append_log(log_file, header)
+
         result = subprocess.run(
             args,
             cwd=str(repo_dir),
@@ -79,11 +125,22 @@ def _run_compose(repo_dir: Path, compose_file: str) -> tuple[str, str]:
         stdout_parts.append(result.stdout)
         stderr_parts.append(result.stderr)
 
+        # Tulis output ke log file
+        if log_file is not None:
+            combined = result.stdout
+            if result.stderr:
+                combined += result.stderr
+            if combined:
+                _append_log(log_file, combined)
+
         if result.returncode != 0:
-            raise RuntimeError(
+            error_msg = (
                 f"Command '{' '.join(args)}' gagal (exit {result.returncode}):\n"
                 f"{result.stderr}"
             )
+            if log_file is not None:
+                _append_log(log_file, f"[InfraForge] ERROR: {error_msg}\n")
+            raise RuntimeError(error_msg)
 
     return "\n".join(stdout_parts), "\n".join(stderr_parts)
 
@@ -103,7 +160,7 @@ def trigger_deployment(
 
     1. Validasi aplikasi dan server ada di DB.
     2. Buat record Deployment awal (status=pending).
-    3. Jalankan orkestrasi via run_deployment.
+    3. Jalankan orkestrasi via _run_deployment.
 
     Raises:
         ValueError: Jika aplikasi atau server tidak ditemukan.
@@ -144,6 +201,7 @@ def _run_deployment(
     Dipisah dari trigger_deployment agar mudah di-mock di unit test.
     """
     repo_dir: Path | None = None
+    log_file: Path | None = None
 
     try:
         # --- 1. Set status deploying ---
@@ -151,19 +209,40 @@ def _run_deployment(
             db, deployment, DeploymentStatus.deploying
         )
 
-        # --- 2. Validasi konfigurasi aplikasi ---
+        # --- 2. Buat log file dan simpan path ke DB ---
+        log_file = _make_log_file(deployment.id)
+        _append_log(
+            log_file,
+            f"[InfraForge] Deployment #{deployment.id} dimulai.\n",
+        )
+        deployment_repository.update_status(
+            db,
+            deployment,
+            DeploymentStatus.deploying,
+            log_path=str(log_file),
+        )
+
+        # --- 3. Validasi konfigurasi aplikasi ---
         if not app.repository:
             raise ValueError(
                 f"Application {app.id} tidak memiliki repository URL yang dikonfigurasi."
             )
 
-        # --- 3. Clone repository ---
+        # --- 4. Clone repository ---
+        _append_log(
+            log_file,
+            f"[InfraForge] Cloning {app.repository} branch={deployment.branch} ...\n",
+        )
         clone_result = git_service.clone_repository(
             url=app.repository,
             branch=deployment.branch,
             depth=1,
         )
         repo_dir = clone_result.repo_dir
+        _append_log(
+            log_file,
+            f"[InfraForge] Clone selesai. commit={clone_result.commit_sha}\n",
+        )
 
         # Update commit SHA segera setelah clone
         deployment_repository.update_status(
@@ -173,7 +252,7 @@ def _run_deployment(
             commit_sha=clone_result.commit_sha,
         )
 
-        # --- 4. Inject env vars ---
+        # --- 5. Inject env vars ---
         raw_env_vars = env_var_repository.list_by_project(db, app.project_id)
         env_map: dict[str, str] = {}
         for ev in raw_env_vars:
@@ -184,13 +263,22 @@ def _run_deployment(
 
         if env_map:
             _write_env_file(repo_dir, env_map)
+            _append_log(
+                log_file,
+                f"[InfraForge] Injected {len(env_map)} env vars.\n",
+            )
 
-        # --- 5. Jalankan docker compose ---
-        _run_compose(repo_dir, app.compose_path)
+        # --- 6. Jalankan docker compose (output ke log file) ---
+        _append_log(log_file, "[InfraForge] Menjalankan docker compose build + up...\n")
+        _run_compose(repo_dir, app.compose_path, log_file=log_file)
+        _append_log(log_file, "[InfraForge] docker compose selesai.\n")
 
-        # --- 6. Health check: pastikan container benar-benar running ---
-        # Docker compose menggunakan nama direktori sebagai project name by default.
+        # --- 7. Health check: pastikan container benar-benar running ---
         compose_project = repo_dir.name
+        _append_log(
+            log_file,
+            f"[InfraForge] Menjalankan health check (project={compose_project})...\n",
+        )
         hc_result = health_check_service.run_health_check(
             compose_project=compose_project,
             startup_delay=8.0,
@@ -202,7 +290,11 @@ def _run_deployment(
                 f"Health check gagal setelah deploy: {hc_result.message}"
             )
 
-        # --- 7. Sukses ---
+        # --- 8. Sukses ---
+        _append_log(
+            log_file,
+            f"[InfraForge] Deployment #{deployment.id} SUKSES.\n",
+        )
         deployment_repository.update_status(
             db, deployment, DeploymentStatus.success
         )
@@ -214,6 +306,11 @@ def _run_deployment(
 
     except Exception as exc:
         logger.error(f"Deployment #{deployment.id} gagal: {exc}")
+        if log_file is not None:
+            _append_log(
+                log_file,
+                f"[InfraForge] Deployment #{deployment.id} GAGAL: {exc}\n",
+            )
         deployment_repository.update_status(
             db, deployment, DeploymentStatus.failed
         )

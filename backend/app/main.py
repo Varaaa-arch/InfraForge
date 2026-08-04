@@ -11,6 +11,7 @@ from app.core.logging import setup_logging
 from app.database.redis_client import check_redis_connection
 from app.database.session import check_database_connection
 from app.middleware.logging_middleware import RequestLoggingMiddleware
+from app.websocket.deployment_logs import router_ws
 
 setup_logging(debug=settings.DEBUG)
 
@@ -78,6 +79,16 @@ tags_metadata = [
             "→ docker compose build + up), lihat history, dan detail status deployment."
         ),
     },
+    {
+        "name": "websocket",
+        "description": (
+            "**WebSocket** endpoints untuk streaming real-time. "
+            "Tidak dapat diuji via Swagger UI — gunakan `websocat` atau browser "
+            "WebSocket API.\n\n"
+            "- `ws://host/ws/deployments/{id}/logs?token=<jwt>` — "
+            "Stream log deployment secara live hingga selesai."
+        ),
+    },
 ]
 
 
@@ -112,6 +123,7 @@ app.include_router(applications.router)
 app.include_router(docker.router)
 app.include_router(containers.router)
 app.include_router(deployments.router)
+app.include_router(router_ws)
 
 @app.get("/")
 def root() -> dict[str, str]:
