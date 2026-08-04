@@ -46,6 +46,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "redis>=8.0.1",
     "sqlalchemy>=2.0.51",
+    "typer>=0.27.1",
     "uvicorn>=0.51.0",
 ]
 
@@ -57,6 +58,9 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.15.22",
 ]
+
+[project.scripts]
+infraforge-cli = "app.cli:main"
 
 [tool.mypy]
 python_version = "3.12"
