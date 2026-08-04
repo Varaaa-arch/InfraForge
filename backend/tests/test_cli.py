@@ -28,7 +28,14 @@ from typer.testing import CliRunner
 
 from app.cli import app, _load_config, _save_config, _get_base_url, _get_token
 
-runner = CliRunner()
+import re
+
+runner = CliRunner(env={"COLUMNS": "200", "NO_COLOR": "1", "TERM": "dumb"})
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from text for reliable substring matching."""
+    return re.sub(r"\x1b\[[0-9;]*[mGKHF]", "", text)
 
 
 # ---------------------------------------------------------------------------
@@ -539,18 +546,21 @@ class TestCLIHelp:
     def test_root_help_lists_commands(self) -> None:
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "login" in result.output
-        assert "deploy" in result.output
-        assert "status" in result.output
-        assert "logs" in result.output
+        out = _strip_ansi(result.output)
+        assert "login" in out
+        assert "deploy" in out
+        assert "status" in out
+        assert "logs" in out
 
     def test_deploy_help_shows_options(self) -> None:
         result = runner.invoke(app, ["deploy", "--help"])
         assert result.exit_code == 0
-        assert "--server-id" in result.output
-        assert "--branch" in result.output
+        out = _strip_ansi(result.output)
+        assert "--server-id" in out
+        assert "--branch" in out
 
     def test_logs_help_shows_tail_option(self) -> None:
         result = runner.invoke(app, ["logs", "--help"])
         assert result.exit_code == 0
-        assert "--tail" in result.output
+        out = _strip_ansi(result.output)
+        assert "--tail" in out
