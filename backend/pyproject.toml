@@ -62,6 +62,9 @@ dev = [
 [project.scripts]
 infraforge-cli = "app.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
