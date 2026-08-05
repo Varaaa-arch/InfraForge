@@ -2,9 +2,10 @@
 Router untuk Deployment Flow (Task 3.6 + Task 3.7).
 
 Endpoints:
-  POST  /deployments      → Picu deployment baru
-  GET   /deployments      → List history dengan filter & pagination
-  GET   /deployments/{id} → Detail satu deployment
+  POST  /deployments           → Picu deployment baru
+  GET   /deployments           → List history dengan filter & pagination
+  GET   /deployments/{id}      → Detail satu deployment
+  GET   /deployments/{id}/logs → Isi log deployment
 
 Query params GET /deployments:
   application_id : filter per aplikasi (opsional)
@@ -15,7 +16,9 @@ Query params GET /deployments:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
+from pathlib import Path
 
 from app.api.deps import get_current_user
 from app.core.audit import log_audit
@@ -185,6 +188,56 @@ def get_deployment(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Deployment not found")
 
     return ApiResponse(data=DeploymentResponse.model_validate(deployment))
+
+
+@router.get(
+    "/{deployment_id}/logs",
+    response_class=PlainTextResponse,
+    summary="Isi log deployment",
+    description=(
+        "Mengembalikan isi log file deployment sebagai plain text. "
+        "Gunakan query parameter `tail` untuk membatasi jumlah baris terakhir "
+        "(default 200, 0 = semua baris)."
+    ),
+    responses={
+        200: {"description": "Isi log deployment"},
+        404: {"description": "Deployment tidak ditemukan atau log belum tersedia"},
+    },
+)
+def get_deployment_logs(
+    deployment_id: int,
+    tail: int = Query(default=200, ge=0, description="Jumlah baris terakhir (0 = semua)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> str:
+    deployment = deployment_service.get_deployment(db, deployment_id)
+    if deployment is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Deployment not found")
+
+    owned_ids = _get_owned_app_ids(current_user, db)
+    if deployment.application_id not in owned_ids:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Deployment not found")
+
+    log_path = deployment.log_path
+    if not log_path:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"Deployment #{deployment_id} belum memiliki log file (status: {deployment.status})",
+        )
+
+    log_file = Path(log_path)
+    if not log_file.exists():
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"File log tidak ditemukan: {log_path}",
+        )
+
+    content = log_file.read_text(encoding="utf-8", errors="replace")
+    if tail > 0:
+        lines = content.splitlines()
+        content = "\n".join(lines[-tail:])
+
+    return content
 
 
 @router.post(

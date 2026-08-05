@@ -105,6 +105,7 @@ def _request(
     headers: dict[str, str] | None = None,
     json_body: dict[str, Any] | None = None,
     data: dict[str, str] | None = None,
+    params: dict[str, Any] | None = None,
 ) -> httpx.Response:
     """
     Lakukan HTTP request dan tangani error koneksi secara bersih.
@@ -117,6 +118,7 @@ def _request(
             headers=headers,
             json=json_body,
             data=data,
+            params=params,
             timeout=30,
         )
         return resp
@@ -299,52 +301,35 @@ def status(
 @app.command()
 def logs(
     deployment_id: int = typer.Argument(..., help="ID deployment yang ingin dilihat lognya"),
-    tail: int = typer.Option(50, "--tail", "-n", help="Jumlah baris terakhir yang ditampilkan (0 = semua)"),
+    tail: int = typer.Option(200, "--tail", "-n", help="Jumlah baris terakhir yang ditampilkan (0 = semua)"),
 ) -> None:
-    """Tampilkan log deployment dari file log yang tersimpan."""
+    """Tampilkan log deployment via API."""
     cfg = _load_config()
     base_url = _get_base_url(cfg)
     headers = _auth_headers(cfg)
 
-    # Ambil info deployment untuk mendapatkan log_path
-    resp = _request("GET", f"{base_url}/deployments/{deployment_id}", headers=headers)
+    resp = _request(
+        "GET",
+        f"{base_url}/deployments/{deployment_id}/logs",
+        headers=headers,
+        params={"tail": tail},
+    )
 
     if resp.status_code == 404:
-        err_console.print(f"Deployment #{deployment_id} tidak ditemukan.")
+        err_console.print(resp.json().get("message", f"Deployment #{deployment_id} tidak ditemukan."))
         raise typer.Exit(code=1)
     elif resp.status_code == 401:
         err_console.print("Tidak terautentikasi. Jalankan `infraforge-cli login` kembali.")
         raise typer.Exit(code=1)
     elif resp.status_code != 200:
-        err_console.print(f"Gagal mengambil deployment: HTTP {resp.status_code}")
+        err_console.print(f"Gagal mengambil log: HTTP {resp.status_code}")
         raise typer.Exit(code=1)
-
-    data = resp.json().get("data", {})
-    log_path = data.get("log_path")
-
-    if not log_path:
-        console.print(
-            f"[yellow]Deployment #{deployment_id} belum memiliki log file "
-            f"(status: {data.get('status', 'unknown')}).[/yellow]"
-        )
-        raise typer.Exit(code=0)
-
-    log_file = Path(log_path)
-    if not log_file.exists():
-        err_console.print(f"File log tidak ditemukan di path: {log_path}")
-        raise typer.Exit(code=1)
-
-    lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-
-    if tail > 0:
-        lines = lines[-tail:]
 
     console.print(
         f"[dim]── Log Deployment #{deployment_id} "
         f"({'last ' + str(tail) + ' lines' if tail > 0 else 'full'}) ──[/dim]"
     )
-    for line in lines:
-        console.print(line)
+    console.print(resp.text)
     console.print("[dim]── End of log ──[/dim]")
 
 

@@ -55,8 +55,8 @@ class ApplicationCreate(BaseModel):
     @field_validator("repository")
     @classmethod
     def validate_repository_url(cls, v: str | None) -> str | None:
-        if v is not None and not (v.startswith("https://") or v.startswith("http://")):
-            raise ValueError("repository harus berupa URL valid (diawali http:// atau https://)")
+        if v is not None and not (v.startswith("https://") or v.startswith("http://") or v.startswith("file://")):
+            raise ValueError("repository harus berupa URL valid (diawali http://, https://, atau file://)")
         return v
 
     @field_validator("name")
@@ -81,8 +81,8 @@ class ApplicationUpdate(BaseModel):
     @field_validator("repository")
     @classmethod
     def validate_repository_url(cls, v: str | None) -> str | None:
-        if v is not None and not (v.startswith("https://") or v.startswith("http://")):
-            raise ValueError("repository harus berupa URL valid (diawali http:// atau https://)")
+        if v is not None and not (v.startswith("https://") or v.startswith("http://") or v.startswith("file://")):
+            raise ValueError("repository harus berupa URL valid (diawali http://, https://, atau file://)")
         return v
 
     @field_validator("name")
