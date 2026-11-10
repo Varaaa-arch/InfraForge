@@ -25,6 +25,7 @@ from app.schemas.application import (
     ApplicationCreate,
     ApplicationResponse,
     ApplicationUpdate,
+    LockStatusResponse,
 )
 from app.schemas.common import MessageResponse
 from app.schemas.response import ApiResponse
@@ -200,3 +201,57 @@ def delete_application(
         application_id=application_id,
     )
     return ApiResponse(data=MessageResponse(message="Application deleted successfully"))
+
+
+@router.get(
+    "/{application_id}/lock-status",
+    response_model=ApiResponse[LockStatusResponse],
+    summary="Cek lock / concurrency status aplikasi",
+    description=(
+        "Mengembalikan status deployment lock untuk sebuah aplikasi. "
+        "Berguna untuk dashboard dan debugging race condition.\n\n"
+        "- `locked=true` jika ada Redis lock aktif atau app.status == deploying.\n"
+        "- `running_deployment_id` menunjukkan deployment mana yang sedang berjalan.\n"
+        "- `lock_source`: `redis` (lock aktif di Redis), `db` (fallback dari DB status), "
+        "atau `none` (tidak locked)."
+    ),
+    responses={
+        200: {"description": "Status lock aplikasi"},
+        404: {"description": "Aplikasi tidak ditemukan atau bukan milik user"},
+    },
+)
+def get_lock_status(
+    application_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiResponse[LockStatusResponse]:
+    from app.services.deployment_queue import (
+        get_running_deployment_id,
+        is_deployment_running,
+    )
+
+    app = _get_owned_application_or_404(application_id, current_user, db)
+
+    redis_locked = is_deployment_running(application_id)
+    running_deployment_id = get_running_deployment_id(application_id) if redis_locked else None
+
+    if redis_locked:
+        lock_source = "redis"
+        locked = True
+    elif app.status.value == "deploying":
+        # DB fallback — Redis mungkin down atau lock tidak ter-release dengan bersih
+        lock_source = "db"
+        locked = True
+    else:
+        lock_source = "none"
+        locked = False
+
+    return ApiResponse(
+        data=LockStatusResponse(
+            application_id=application_id,
+            locked=locked,
+            running_deployment_id=running_deployment_id,
+            app_status=app.status,
+            lock_source=lock_source,
+        )
+    )

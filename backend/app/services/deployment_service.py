@@ -30,6 +30,7 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.models.application import Application
+from app.models.application import AppStatus
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.server import Server
 from app.repositories import application_repository
@@ -158,24 +159,70 @@ def trigger_deployment(
     """
     Trigger deployment baru (synchronous — untuk API manual trigger).
 
-    1. Validasi aplikasi dan server ada di DB.
-    2. Buat record Deployment awal (status=pending).
-    3. Jalankan orkestrasi via _run_deployment.
+    Concurrency guard (double-guard):
+      1. Cek Redis lock → jika ada lock aktif, raise ConflictError.
+      2. Cek DB app.status → fallback jika Redis down.
+      3. Acquire lock sebelum menjalankan deployment.
+      4. Release lock di finally block.
 
     Raises:
-        ValueError: Jika aplikasi atau server tidak ditemukan.
+        ValueError:  Jika aplikasi atau server tidak ditemukan.
+        RuntimeError: Jika deployment gagal atau aplikasi sedang deploying.
     """
+    from app.services.deployment_queue import (
+        acquire_deploy_lock,
+        get_running_deployment_id,
+        is_deployment_running,
+        is_locked_by_db_status,
+        release_deploy_lock,
+    )
+
+    # --- Guard layer 1: Redis lock ---
+    if is_deployment_running(application_id):
+        running_id = get_running_deployment_id(application_id)
+        raise RuntimeError(
+            f"Application {application_id} sedang dalam proses deployment "
+            f"(deployment_id={running_id}). Tunggu hingga selesai sebelum memicu ulang."
+        )
+
+    # --- Guard layer 2: DB status fallback ---
+    if is_locked_by_db_status(application_id):
+        raise RuntimeError(
+            f"Application {application_id} berstatus 'deploying' di database. "
+            f"Tunggu hingga deployment aktif selesai."
+        )
+
     deployment, app, server = create_deployment_record(
         db, application_id, server_id, branch_override
     )
 
+    # Acquire lock setelah record dibuat (deployment_id sudah tersedia)
+    acquired = acquire_deploy_lock(application_id, deployment.id)
+    if not acquired:
+        # Race condition: lock diambil oleh proses lain setelah cek di atas
+        deployment_repository.update_status(db, deployment, DeploymentStatus.failed)
+        running_id = get_running_deployment_id(application_id)
+        raise RuntimeError(
+            f"Application {application_id} sedang dalam proses deployment "
+            f"(deployment_id={running_id}). Race condition terdeteksi."
+        )
+
+    # Update app.status = deploying
+    application_repository.update_status(db, app, AppStatus.deploying)
+
     try:
         _run_deployment(db, deployment, app, server)
+        # Sukses → set app.status = running
+        application_repository.update_status(db, app, AppStatus.running)
     except Exception:
+        # Gagal → set app.status = failed
+        application_repository.update_status(db, app, AppStatus.failed)
         logger.error(
             f"Deployment #{deployment.id} untuk app={application_id} gagal."
         )
         raise
+    finally:
+        release_deploy_lock(application_id)
 
     return deployment
 

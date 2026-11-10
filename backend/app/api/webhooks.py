@@ -137,8 +137,20 @@ async def github_webhook(
         from app.services import deployment_service, project_service
 
         deployment_ids: list[int] = []
+        skipped_locked: list[int] = []  # app_id yang sedang deploying
+
         for app in matching_apps:
             try:
+                # --- Concurrency guard: skip jika app sedang deploying ---
+                if deployment_queue.is_deployment_running(app.id):
+                    running_id = deployment_queue.get_running_deployment_id(app.id)
+                    logger.warning(
+                        f"Webhook: app {app.id} sedang deploying "
+                        f"(deployment_id={running_id}) — webhook push di-skip."
+                    )
+                    skipped_locked.append(app.id)
+                    continue
+
                 project = project_service.get_project_by_id(db, app.project_id)
                 if project is None:
                     logger.warning(f"Project {app.project_id} tidak ditemukan untuk app {app.id}.")
@@ -179,6 +191,15 @@ async def github_webhook(
 
         # --- 7. Return 202 Accepted ---
         if not deployment_ids:
+            # Semua aplikasi sedang deploying atau tidak ada yang bisa di-schedule
+            if skipped_locked:
+                return WebhookResponse(
+                    accepted=False,
+                    message=(
+                        f"Semua aplikasi yang match sedang deploying "
+                        f"(app_ids={skipped_locked}). Push ini di-skip."
+                    ),
+                )
             return WebhookResponse(
                 accepted=False,
                 message="Tidak ada deployment yang berhasil di-schedule",

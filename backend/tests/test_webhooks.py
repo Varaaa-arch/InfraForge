@@ -309,11 +309,30 @@ class TestDeploymentQueueLock:
 class TestRunDeploymentTask:
     def test_skipped_when_lock_not_acquired(self) -> None:
         from app.services.deployment_queue import run_deployment_background
-        with patch("app.services.deployment_queue.redis_client") as mock_redis:
-            mock_redis.set.return_value = False  # Lock not acquired
-            with patch("app.services.deployment_queue.SessionLocal") as mock_session_cls:
-                run_deployment_background(1, 1, 1)
-                mock_session_cls.assert_not_called()
+        from app.models.deployment import Deployment
+
+        mock_dep = MagicMock(spec=Deployment)
+
+        with (
+            patch("app.services.deployment_queue.redis_client") as mock_redis,
+            patch("app.services.deployment_queue.SessionLocal") as mock_session_cls,
+            patch("app.repositories.deployment_repository.get_by_id", return_value=mock_dep),
+            patch("app.repositories.deployment_repository.update_status"),
+        ):
+            mock_redis.set.return_value = False   # Lock not acquired
+            mock_redis.get.return_value = "77"    # running deployment_id
+
+            mock_db = MagicMock()
+            mock_db.__enter__ = MagicMock(return_value=mock_db)
+            mock_db.__exit__ = MagicMock(return_value=False)
+            mock_session_cls.return_value = mock_db
+
+            run_deployment_background(1, 1, 1)
+
+            # SessionLocal DIPANGGIL (untuk mark deployment failed),
+            # tapi lock harus tidak di-delete (karena tidak pernah di-acquire)
+            mock_session_cls.assert_called_once()
+            mock_redis.delete.assert_not_called()
 
     def test_failed_when_deployment_not_found(self) -> None:
         from app.services.deployment_queue import run_deployment_background
@@ -324,12 +343,15 @@ class TestRunDeploymentTask:
         ):
             mock_redis.set.return_value = True
             mock_redis.delete.return_value = 1
+
             mock_db = MagicMock()
+            mock_db.__enter__ = MagicMock(return_value=mock_db)
+            mock_db.__exit__ = MagicMock(return_value=False)
             mock_session_cls.return_value = mock_db
 
             run_deployment_background(999, 1, 1)
 
-            mock_db.close.assert_called_once()
+            # Lock harus di-release via finally block
             mock_redis.delete.assert_called_once()
 
     def test_lock_released_in_finally(self) -> None:

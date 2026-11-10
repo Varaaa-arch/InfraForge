@@ -109,3 +109,23 @@ class ApplicationResponse(BaseModel):
     status: AppStatus
     created_at: datetime
     updated_at: datetime
+
+
+class LockStatusResponse(BaseModel):
+    """Response untuk endpoint GET /applications/{id}/lock-status."""
+
+    application_id: int = Field(description="ID aplikasi yang dicek")
+    locked: bool = Field(description="True jika aplikasi sedang dalam proses deployment")
+    running_deployment_id: int | None = Field(
+        default=None,
+        description="ID deployment yang sedang berjalan (dari Redis), jika ada",
+    )
+    app_status: AppStatus = Field(
+        description="Status operasional aplikasi di database (idle/deploying/running/failed)"
+    )
+    lock_source: str = Field(
+        description=(
+            "Sumber informasi lock: 'redis' jika lock aktif di Redis, "
+            "'db' jika status deploying di DB (Redis down), 'none' jika tidak locked"
+        )
+    )
