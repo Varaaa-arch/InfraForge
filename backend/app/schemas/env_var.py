@@ -12,6 +12,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.utils.env_sanitizer import sanitize_env_key_input, sanitize_env_value_input
 
 # Regex untuk nama env var yang valid (konvensi POSIX: huruf besar, angka, underscore)
 _ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -39,6 +40,18 @@ class EnvVarCreate(BaseModel):
                 "serta tidak boleh diawali angka"
             )
         return v.upper()  # Normalisasi ke uppercase (konvensi env var)
+
+    @field_validator("value")
+    @classmethod
+    def sanitize_value(cls, v: str) -> str:
+        """
+        Sanitasi value sebelum masuk ke sistem:
+          - Strip leading/trailing whitespace.
+          - Reject jika mengandung newline (\\n, \\r) atau null byte (\\x00).
+            Karakter ini bisa dipakai untuk menyisipkan baris .env palsu
+            (newline injection attack).
+        """
+        return sanitize_env_value_input(v)
 
 
 class EnvVarBulkCreate(BaseModel):

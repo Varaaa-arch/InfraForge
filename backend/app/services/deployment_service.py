@@ -40,6 +40,7 @@ from app.repositories import server_repository
 from app.services import encryption_service
 from app.services import git_service
 from app.services import health_check as health_check_service
+from app.utils.env_sanitizer import build_env_file_line
 
 
 # ---------------------------------------------------------------------------
@@ -76,12 +77,36 @@ def _append_log(log_file: Path, text: str) -> None:
 def _write_env_file(repo_dir: Path, env_vars: dict[str, str]) -> Path:
     """
     Tulis dictionary key=value ke file `.env` di dalam `repo_dir`.
+
+    Setiap baris disanitasi via `build_env_file_line()`:
+      - Key di-uppercase dan divalidasi format.
+      - Value di-strip karakter kontrol berbahaya (defense-in-depth).
+      - Value yang mengandung spasi atau karakter khusus di-double-quote.
+      - Value yang mengandung backslash/double-quote di-escape.
+
+    Ini adalah lapisan keamanan kedua (output layer). Lapisan pertama
+    (input layer) ada di `EnvVarCreate` schema via `field_validator`.
+
     Return path file .env yang dibuat.
     """
     env_file = repo_dir / ".env"
-    lines = [f"{k}={v}\n" for k, v in env_vars.items()]
+    lines: list[str] = []
+    skipped = 0
+
+    for k, v in env_vars.items():
+        try:
+            lines.append(build_env_file_line(k, v))
+        except ValueError as exc:
+            # Jika sanitasi gagal (key/value tidak valid), skip dan log warning
+            # Jangan crash seluruh deployment hanya karena satu env var bermasalah
+            logger.warning(f"Env var '{k}' di-skip saat tulis .env: {exc}")
+            skipped += 1
+
     env_file.write_text("".join(lines), encoding="utf-8")
-    logger.debug(f"Wrote {len(env_vars)} env vars to {env_file}")
+    logger.debug(
+        f"Wrote {len(lines)} env vars to {env_file}"
+        + (f" ({skipped} skipped due to sanitization errors)" if skipped else "")
+    )
     return env_file
 
 
