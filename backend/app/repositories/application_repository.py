@@ -16,6 +16,19 @@ def get_by_id(db: Session, application_id: int) -> Application | None:
     return db.get(Application, application_id)
 
 
+def list_all_with_repository(db: Session) -> list[Application]:
+    """
+    Daftar semua aplikasi yang memiliki URL repository dikonfigurasi.
+    Dipakai oleh webhook handler untuk mencari aplikasi yang match dengan
+    repository URL dari push event GitHub.
+    """
+    return (
+        db.query(Application)
+        .filter(Application.repository.isnot(None))
+        .all()
+    )
+
+
 def get_by_id_and_project(
     db: Session, application_id: int, project_id: int
 ) -> Application | None:

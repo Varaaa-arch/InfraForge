@@ -156,11 +156,44 @@ def trigger_deployment(
     branch_override: str | None = None,
 ) -> Deployment:
     """
-    Trigger deployment baru.
+    Trigger deployment baru (synchronous — untuk API manual trigger).
 
     1. Validasi aplikasi dan server ada di DB.
     2. Buat record Deployment awal (status=pending).
     3. Jalankan orkestrasi via _run_deployment.
+
+    Raises:
+        ValueError: Jika aplikasi atau server tidak ditemukan.
+    """
+    deployment, app, server = create_deployment_record(
+        db, application_id, server_id, branch_override
+    )
+
+    try:
+        _run_deployment(db, deployment, app, server)
+    except Exception:
+        logger.error(
+            f"Deployment #{deployment.id} untuk app={application_id} gagal."
+        )
+        raise
+
+    return deployment
+
+
+def create_deployment_record(
+    db: Session,
+    application_id: int,
+    server_id: int,
+    branch_override: str | None = None,
+) -> tuple[Deployment, Application, Server]:
+    """
+    Validasi aplikasi dan server, lalu buat record Deployment (status=pending).
+
+    Dipisah dari trigger_deployment agar webhook handler bisa membuat record
+    terlebih dahulu, lalu men-enqueue job ke ARQ untuk eksekusi async.
+
+    Returns:
+        Tuple (deployment, application, server) — siap dipakai oleh _run_deployment.
 
     Raises:
         ValueError: Jika aplikasi atau server tidak ditemukan.
@@ -175,18 +208,7 @@ def trigger_deployment(
 
     branch = branch_override or app.branch
     deployment = deployment_repository.create(db, application_id, server_id, branch)
-
-    try:
-        _run_deployment(db, deployment, app, server)
-    except Exception:
-        # Status sudah diupdate di dalam _run_deployment pada blok except-nya.
-        # Di sini hanya log dan re-raise agar caller juga tahu.
-        logger.error(
-            f"Deployment #{deployment.id} untuk app={application_id} gagal."
-        )
-        raise
-
-    return deployment
+    return deployment, app, server
 
 
 def _run_deployment(

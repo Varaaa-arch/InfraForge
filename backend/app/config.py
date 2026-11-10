@@ -27,6 +27,25 @@ class Settings(BaseSettings):
     # Jika tidak diset, dibangun dari POSTGRES_* fields di bawah.
     DATABASE_URL: str | None = None
 
+    # ---------------------------------------------------------------------------
+    # GitHub Webhook
+    # ---------------------------------------------------------------------------
+    # Secret yang dikonfigurasi di Settings → Webhooks GitHub.
+    # Wajib diset di production. Jika kosong string, endpoint webhook akan
+    # menolak semua request dengan 500 (misconfiguration).
+    GITHUB_WEBHOOK_SECRET: str = ""
+
+    # ---------------------------------------------------------------------------
+    # ARQ Worker (Async Redis Queue)
+    # ---------------------------------------------------------------------------
+    # Jumlah job yang bisa diproses worker secara bersamaan.
+    ARQ_MAX_JOBS: int = 10
+    # Timeout (detik) per job deployment sebelum worker men-cancel task.
+    # Harus > timeout subprocess (600s × 2 perintah + overhead).
+    ARQ_JOB_TIMEOUT: int = 1500
+    # TTL key Redis untuk idempotency dedup X-GitHub-Delivery (detik).
+    ARQ_DELIVERY_TTL: int = 86400  # 24 jam
+
     @property
     def db_url(self) -> str:
         if self.DATABASE_URL:
@@ -35,6 +54,11 @@ class Settings(BaseSettings):
             f"postgresql+psycopg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
+
+    @property
+    def redis_dsn(self) -> str:
+        """Redis DSN untuk ARQ worker (format: redis://host:port)."""
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}"
 
 
 settings = Settings()  # type: ignore[call-arg]

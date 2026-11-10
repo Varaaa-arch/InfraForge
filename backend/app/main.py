@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from loguru import logger
 
-from app.api import applications, auth, containers, dashboard, deployments, docker, env_vars, health, projects, servers, users
+from app.api import applications, auth, containers, dashboard, deployments, docker, env_vars, health, projects, servers, users, webhooks
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -80,6 +80,13 @@ tags_metadata = [
         ),
     },
     {
+        "name": "webhooks",
+        "description": (
+            "GitHub Webhook Handler — menerima push event dari GitHub dan "
+            "men-trigger deployment otomatis ke background queue."
+        ),
+    },
+    {
         "name": "websocket",
         "description": (
             "**WebSocket** endpoints untuk streaming real-time. "
@@ -123,6 +130,7 @@ app.include_router(applications.router)
 app.include_router(docker.router)
 app.include_router(containers.router)
 app.include_router(deployments.router)
+app.include_router(webhooks.router)
 app.include_router(router_ws)
 
 @app.get("/")
