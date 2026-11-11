@@ -95,9 +95,20 @@ def create(
     application_id: int,
     server_id: int | None,
     branch: str,
+    *,
+    rollback_of: int | None = None,
+    compose_path_snapshot: str | None = None,
+    is_rollback: bool = False,
 ) -> Deployment:
     """
     Buat entri deployment baru dengan status `pending`.
+
+    Args:
+        rollback_of:           ID deployment sukses yang menjadi target rollback.
+                               None untuk deployment biasa.
+        compose_path_snapshot: Snapshot compose path dari deployment target rollback.
+        is_rollback:           True jika ini adalah operasi rollback.
+
     Commit dan refresh dilakukan di sini.
     """
     deployment = Deployment(
@@ -105,11 +116,46 @@ def create(
         server_id=server_id,
         branch=branch,
         status=DeploymentStatus.pending,
+        rollback_of=rollback_of,
+        compose_path_snapshot=compose_path_snapshot,
+        is_rollback=is_rollback,
     )
     db.add(deployment)
     db.commit()
     db.refresh(deployment)
     return deployment
+
+
+def get_last_successful(
+    db: Session,
+    application_id: int,
+    *,
+    exclude_id: int | None = None,
+) -> Deployment | None:
+    """
+    Ambil deployment sukses (status=success) terakhir untuk aplikasi tertentu.
+
+    Dipakai oleh rollback untuk menemukan snapshot yang akan di-restore.
+
+    Args:
+        application_id: ID aplikasi yang dicari.
+        exclude_id:     ID deployment yang dikecualikan (biasanya deployment
+                        yang akan di-rollback itu sendiri, agar tidak
+                        rollback ke diri sendiri).
+
+    Returns:
+        Deployment sukses terakhir, atau None jika tidak ada.
+    """
+    q = (
+        db.query(Deployment)
+        .filter(
+            Deployment.application_id == application_id,
+            Deployment.status == DeploymentStatus.success,
+        )
+    )
+    if exclude_id is not None:
+        q = q.filter(Deployment.id != exclude_id)
+    return q.order_by(Deployment.finished_at.desc()).first()
 
 
 def update_status(
@@ -118,18 +164,22 @@ def update_status(
     status: DeploymentStatus,
     commit_sha: str | None = None,
     log_path: str | None = None,
+    compose_path_snapshot: str | None = None,
 ) -> Deployment:
     """
     Update status deployment.
 
-    - `commit_sha` dan `log_path` diupdate jika diberikan (tidak None).
+    - `commit_sha`, `log_path`, `compose_path_snapshot` diupdate jika diberikan.
     - `finished_at` diisi otomatis saat status terminal (success / failed).
+    - `compose_path_snapshot` disimpan saat status success agar bisa di-rollback.
     """
     deployment.status = status
     if commit_sha is not None:
         deployment.commit_sha = commit_sha
     if log_path is not None:
         deployment.log_path = log_path
+    if compose_path_snapshot is not None:
+        deployment.compose_path_snapshot = compose_path_snapshot
     if status in (DeploymentStatus.success, DeploymentStatus.failed):
         deployment.finished_at = datetime.now(tz=timezone.utc)
     db.commit()

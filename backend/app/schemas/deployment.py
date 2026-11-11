@@ -57,6 +57,21 @@ class DeploymentResponse(BaseModel):
     log_path: str | None
     started_at: datetime
     finished_at: datetime | None
+
+    # --- Rollback metadata ---
+    is_rollback: bool = Field(
+        default=False,
+        description="True jika deployment ini adalah hasil operasi rollback.",
+    )
+    rollback_of: int | None = Field(
+        default=None,
+        description="ID deployment sukses yang menjadi target rollback. None jika bukan rollback.",
+    )
+    compose_path_snapshot: str | None = Field(
+        default=None,
+        description="Snapshot compose path saat deployment sukses (dipakai rollback).",
+    )
+
     duration: float | None = Field(
         default=None,
         description=(

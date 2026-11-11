@@ -190,6 +190,67 @@ def get_deployment(
     return ApiResponse(data=DeploymentResponse.model_validate(deployment))
 
 
+@router.post(
+    "/{deployment_id}/rollback",
+    response_model=ApiResponse[DeploymentResponse],
+    status_code=status.HTTP_201_CREATED,
+    summary="Rollback ke deployment sukses sebelumnya",
+    description=(
+        "Menjalankan rollback ke state dari sebuah deployment sukses. "
+        "Endpoint ini membuat deployment record baru (`is_rollback=true`) yang "
+        "menggunakan `branch`, `commit_sha`, dan `compose_path` dari deployment "
+        "target (`{deployment_id}`).\n\n"
+        "**Guard conditions:**\n"
+        "- Target deployment harus berstatus `success`.\n"
+        "- Aplikasi tidak boleh sedang dalam proses deployment (concurrency lock).\n"
+        "- Target deployment harus milik aplikasi yang dimiliki user yang login.\n"
+        "- Server dari deployment target harus masih ada."
+    ),
+    responses={
+        201: {"description": "Rollback berhasil dijalankan"},
+        404: {"description": "Deployment target tidak ditemukan atau bukan milik user"},
+        409: {"description": "Aplikasi sedang deploying, coba lagi nanti"},
+        422: {"description": "Target deployment bukan status success"},
+    },
+)
+def rollback_deployment(
+    deployment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiResponse[DeploymentResponse]:
+    # Verifikasi target deployment ada dan milik user
+    target = deployment_service.get_deployment(db, deployment_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Deployment not found")
+
+    owned_ids = _get_owned_app_ids(current_user, db)
+    if target.application_id not in owned_ids:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Deployment not found")
+
+    try:
+        rollback = deployment_service.rollback_deployment(
+            db=db,
+            target_deployment_id=deployment_id,
+            application_id=target.application_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    except RuntimeError as exc:
+        # Concurrency conflict → 409
+        if "sedang dalam proses deployment" in str(exc):
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc))
+
+    log_audit(
+        "ROLLBACK_DEPLOYMENT",
+        user=current_user.username,
+        rollback_deployment_id=rollback.id,
+        target_deployment_id=deployment_id,
+        application_id=target.application_id,
+    )
+    return ApiResponse(data=DeploymentResponse.model_validate(rollback))
+
+
 @router.get(
     "/{deployment_id}/logs",
     response_class=PlainTextResponse,

@@ -468,6 +468,11 @@ class TestTriggerDeploymentConcurrencyGuard:
             from datetime import datetime, timezone
             mock_dep.started_at = datetime.now(tz=timezone.utc)
             mock_dep.finished_at = None
+            # Rollback fields (added in P0 Item #2) — must be set explicitly
+            # because MagicMock auto-creates attributes that fail Pydantic validation.
+            mock_dep.is_rollback = False
+            mock_dep.rollback_of = None
+            mock_dep.compose_path_snapshot = None
 
             mock_app_obj = MagicMock(spec=Application)
             mock_app_obj.status = AppStatus.idle

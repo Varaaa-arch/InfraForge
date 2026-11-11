@@ -4,10 +4,18 @@ Model SQLAlchemy untuk tabel `deployments`.
 Setiap baris merepresentasikan satu eksekusi deployment dari sebuah aplikasi
 ke sebuah server. Status bergerak dari pending → deploying → success/failed.
 
+Kolom rollback:
+  - rollback_of        : FK ke deployment.id yang menjadi target rollback.
+                         NULL jika bukan rollback.
+  - compose_path_snapshot: Snapshot path compose_file saat deployment sukses,
+                         dipakai oleh rollback untuk re-deploy konfigurasi lama.
+  - is_rollback        : True jika deployment ini adalah hasil operasi rollback.
+
 Relasi:
   - application_id → FK ke tabel applications (CASCADE delete)
   - server_id      → FK ke tabel servers (SET NULL saat server dihapus, agar
                      history deployment tidak ikut hilang)
+  - rollback_of    → FK ke deployments.id (SET NULL jika target dihapus)
 """
 
 from __future__ import annotations
@@ -15,7 +23,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.session import Base
@@ -71,6 +79,29 @@ class Deployment(Base):
         Text,
         nullable=True,
         comment="Path file log sementara di server / lokal",
+    )
+
+    # --- Rollback metadata ---
+    rollback_of: Mapped[int | None] = mapped_column(
+        ForeignKey("deployments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="ID deployment yang di-rollback. NULL jika bukan rollback.",
+    )
+    compose_path_snapshot: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment=(
+            "Snapshot path compose file saat deployment ini sukses. "
+            "Dipakai rollback untuk re-deploy konfigurasi lama."
+        ),
+    )
+    is_rollback: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+        comment="True jika deployment ini adalah operasi rollback.",
     )
 
     started_at: Mapped[datetime] = mapped_column(

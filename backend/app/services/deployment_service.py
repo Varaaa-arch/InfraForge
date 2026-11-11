@@ -390,7 +390,8 @@ def _run_deployment(
             f"[InfraForge] Deployment #{deployment.id} SUKSES.\n",
         )
         deployment_repository.update_status(
-            db, deployment, DeploymentStatus.success
+            db, deployment, DeploymentStatus.success,
+            compose_path_snapshot=app.compose_path,
         )
         logger.info(
             f"Deployment #{deployment.id} sukses "
@@ -462,3 +463,142 @@ def list_deployments_by_application(
         limit=limit,
         offset=offset,
     )
+
+
+def rollback_deployment(
+    db: Session,
+    target_deployment_id: int,
+    application_id: int,
+) -> Deployment:
+    """
+    Rollback ke state deployment sukses sebelumnya.
+
+    Flow:
+      1. Validasi target deployment: harus ada + status success + milik app ini.
+      2. Cek concurrency lock (double-guard seperti trigger_deployment).
+      3. Ambil snapshot dari target: branch, commit_sha, compose_path_snapshot.
+      4. Buat Deployment record baru (is_rollback=True, rollback_of=target_id).
+      5. Jalankan _run_deployment dengan compose_path dari snapshot.
+
+    Args:
+        target_deployment_id: ID deployment sukses yang akan di-rollback ke sana.
+        application_id:       ID aplikasi (untuk validasi kepemilikan + lock).
+
+    Returns:
+        Deployment record baru yang merepresentasikan operasi rollback.
+
+    Raises:
+        ValueError:   Jika target deployment tidak ditemukan, bukan milik app ini,
+                      atau bukan status success.
+        RuntimeError: Jika aplikasi sedang deploying (concurrency guard),
+                      atau proses rollback gagal.
+    """
+    from app.services.deployment_queue import (
+        acquire_deploy_lock,
+        get_running_deployment_id,
+        is_deployment_running,
+        is_locked_by_db_status,
+        release_deploy_lock,
+    )
+
+    # --- 1. Validasi target deployment ---
+    target = deployment_repository.get_by_id(db, target_deployment_id)
+    if target is None:
+        raise ValueError(f"Deployment #{target_deployment_id} tidak ditemukan.")
+
+    if target.application_id != application_id:
+        raise ValueError(
+            f"Deployment #{target_deployment_id} bukan milik aplikasi {application_id}."
+        )
+
+    if target.status != DeploymentStatus.success:
+        raise ValueError(
+            f"Rollback hanya bisa ke deployment dengan status 'success'. "
+            f"Deployment #{target_deployment_id} berstatus '{target.status.value}'."
+        )
+
+    # Pastikan ada snapshot compose_path (deployment lama mungkin tidak punya)
+    compose_path = target.compose_path_snapshot
+    if not compose_path:
+        # Fallback: ambil dari konfigurasi aplikasi saat ini
+        app = application_repository.get_by_id(db, application_id)
+        if app is None:
+            raise ValueError(f"Application {application_id} tidak ditemukan.")
+        compose_path = app.compose_path
+        logger.warning(
+            f"Deployment #{target_deployment_id} tidak punya compose_path_snapshot, "
+            f"fallback ke app.compose_path='{compose_path}'"
+        )
+
+    # --- 2. Concurrency guard ---
+    if is_deployment_running(application_id):
+        running_id = get_running_deployment_id(application_id)
+        raise RuntimeError(
+            f"Application {application_id} sedang dalam proses deployment "
+            f"(deployment_id={running_id}). Tunggu hingga selesai sebelum rollback."
+        )
+
+    if is_locked_by_db_status(application_id):
+        raise RuntimeError(
+            f"Application {application_id} berstatus 'deploying' di database. "
+            f"Tunggu hingga deployment aktif selesai."
+        )
+
+    # --- 3. Ambil app + server ---
+    app = application_repository.get_by_id(db, application_id)
+    if app is None:
+        raise ValueError(f"Application {application_id} tidak ditemukan.")
+
+    server = server_repository.get_by_id(db, target.server_id) if target.server_id else None
+    if server is None:
+        raise ValueError(
+            f"Server dari deployment #{target_deployment_id} tidak ditemukan atau sudah dihapus. "
+            "Gunakan trigger_deployment biasa dengan server yang masih aktif."
+        )
+
+    # --- 4. Buat Deployment record rollback ---
+    rollback_dep = deployment_repository.create(
+        db,
+        application_id=application_id,
+        server_id=server.id,
+        branch=target.branch,
+        rollback_of=target_deployment_id,
+        compose_path_snapshot=compose_path,
+        is_rollback=True,
+    )
+
+    # --- 5. Acquire lock + jalankan rollback ---
+    acquired = acquire_deploy_lock(application_id, rollback_dep.id)
+    if not acquired:
+        deployment_repository.update_status(db, rollback_dep, DeploymentStatus.failed)
+        running_id = get_running_deployment_id(application_id)
+        raise RuntimeError(
+            f"Application {application_id} sedang dalam proses deployment "
+            f"(deployment_id={running_id}). Race condition terdeteksi."
+        )
+
+    # Update app.status = deploying
+    application_repository.update_status(db, app, AppStatus.deploying)
+
+    try:
+        # Jalankan deployment dengan compose_path dari snapshot
+        # Override compose_path di app object (tidak di-commit ke DB)
+        app.compose_path = compose_path
+        _run_deployment(db, rollback_dep, app, server)
+        application_repository.update_status(db, app, AppStatus.running)
+    except Exception:
+        application_repository.update_status(db, app, AppStatus.failed)
+        logger.error(
+            f"Rollback deployment #{rollback_dep.id} "
+            f"(target={target_deployment_id}) gagal."
+        )
+        raise
+    finally:
+        release_deploy_lock(application_id)
+
+    logger.info(
+        f"Rollback #{rollback_dep.id} sukses "
+        f"(app={application_id}, target=#{target_deployment_id}, "
+        f"branch={target.branch}, compose={compose_path})"
+    )
+    return rollback_dep
