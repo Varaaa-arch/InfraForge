@@ -229,6 +229,22 @@ cp .env.example .env
 docker compose up -d
 ```
 
+- Dashboard: http://localhost:5173
+- API / Swagger: http://localhost:8000/docs (via dashboard: http://localhost:5173/api/docs)
+- Prometheus: http://localhost:9090
+- cAdvisor: http://localhost:8081
+- Loki: http://localhost:3100
+
+Frontend dibangun sebagai image statis dan dilayani nginx. nginx mem-proxy
+request `/api` (REST + WebSocket) ke backend, sehingga dashboard tetap
+same-origin. Untuk pengembangan lokal tanpa Docker:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
 > Setup lengkap masih dalam pengembangan, instruksi detail akan ditambahkan seiring progress.
 
 ---

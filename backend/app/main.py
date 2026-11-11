@@ -2,9 +2,10 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from app.api import applications, auth, containers, dashboard, deployments, docker, env_vars, health, projects, servers, users, webhooks
+from app.api import applications, auth, containers, dashboard, deployments, docker, env_vars, health, logs, projects, servers, users, webhooks
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -12,6 +13,7 @@ from app.database.redis_client import check_redis_connection
 from app.database.session import check_database_connection
 from app.middleware.logging_middleware import RequestLoggingMiddleware
 from app.websocket.deployment_logs import router_ws
+from app.websocket.loki_logs import router_ws_logs
 
 setup_logging(debug=settings.DEBUG)
 
@@ -73,6 +75,13 @@ tags_metadata = [
         ),
     },
     {
+        "name": "logs",
+        "description": (
+            "Centralized Logging via Loki: pencarian keyword, filter per container, "
+            "dan filter level (error / warning / info / debug)."
+        ),
+    },
+    {
         "name": "deployments",
         "description": (
             "Orkestrasi deployment: picu deployment baru (clone repo → inject env vars "
@@ -93,7 +102,9 @@ tags_metadata = [
             "Tidak dapat diuji via Swagger UI — gunakan `websocat` atau browser "
             "WebSocket API.\n\n"
             "- `ws://host/ws/deployments/{id}/logs?token=<jwt>` — "
-            "Stream log deployment secara live hingga selesai."
+            "Stream log deployment secara live hingga selesai.\n"
+            "- `ws://host/ws/logs?token=<jwt>&container=<nama>&q=<keyword>&level=<level>` — "
+            "Stream log container secara real-time dari Loki."
         ),
     },
 ]
@@ -118,6 +129,13 @@ app = FastAPI(
 
 register_exception_handlers(app)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(health.router)
 app.include_router(auth.router)
@@ -129,9 +147,11 @@ app.include_router(env_vars.router)
 app.include_router(applications.router)
 app.include_router(docker.router)
 app.include_router(containers.router)
+app.include_router(logs.router)
 app.include_router(deployments.router)
 app.include_router(webhooks.router)
 app.include_router(router_ws)
+app.include_router(router_ws_logs)
 
 @app.get("/")
 def root() -> dict[str, str]:

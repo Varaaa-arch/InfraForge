@@ -23,6 +23,20 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
 
+    # ---------------------------------------------------------------------------
+    # Loki (Centralized Logging)
+    # ---------------------------------------------------------------------------
+    # Base URL Loki HTTP API. Di dalam Docker Compose gunakan http://loki:3100.
+    LOKI_URL: str = "http://localhost:3100"
+    # Timeout request ke Loki (detik).
+    LOKI_TIMEOUT: float = 10.0
+
+    # ---------------------------------------------------------------------------
+    # CORS
+    # ---------------------------------------------------------------------------
+    # Origin frontend yang diizinkan, pisahkan dengan koma.
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+
     # Boleh di-override langsung via DATABASE_URL env var (berguna di CI).
     # Jika tidak diset, dibangun dari POSTGRES_* fields di bawah.
     DATABASE_URL: str | None = None
@@ -59,6 +73,15 @@ class Settings(BaseSettings):
     def redis_dsn(self) -> str:
         """Redis DSN untuk ARQ worker (format: redis://host:port)."""
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parse CORS_ORIGINS (comma-separated) menjadi list origin."""
+        return [
+            origin.strip()
+            for origin in self.CORS_ORIGINS.split(",")
+            if origin.strip()
+        ]
 
 
 settings = Settings()  # type: ignore[call-arg]

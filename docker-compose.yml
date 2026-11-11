@@ -1,4 +1,16 @@
 services:
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: /api
+    container_name: infraforge-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
   backend:
     build: ./backend
     container_name: infraforge-backend
@@ -9,9 +21,12 @@ services:
     environment:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
+      LOKI_URL: http://loki:3100
     depends_on:
       - postgres
       - redis
+    security_opt:
+      - label=disable
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
@@ -32,8 +47,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: infraforge-redis
-    ports:
-      - "6379:6379"
     restart: unless-stopped
 
   prometheus:
@@ -79,6 +92,35 @@ services:
       - /dev/kmsg
     restart: unless-stopped
 
+  loki:
+    image: grafana/loki:3.6.11
+    container_name: infraforge-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infrastructure/loki/loki-config.yml:/etc/loki/loki-config.yml:ro,Z
+      - loki_data:/loki
+    command:
+      - -config.file=/etc/loki/loki-config.yml
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.6.11
+    container_name: infraforge-promtail
+    security_opt:
+      - label=disable
+    volumes:
+      - ./infrastructure/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro,Z
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail_positions:/positions
+    command:
+      - -config.file=/etc/promtail/promtail-config.yml
+    depends_on:
+      - loki
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   prometheus_data:
+  loki_data:
+  promtail_positions:
