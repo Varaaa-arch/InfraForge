@@ -35,6 +35,22 @@ def list_by_owner(db: Session, owner_id: int) -> list[Server]:
     )
 
 
+def count_by_owner(db: Session, owner_id: int) -> int:
+    """Hitung jumlah server milik owner tertentu (untuk dashboard)."""
+    return db.query(Server).filter(Server.owner_id == owner_id).count()
+
+
+def count_by_owner_and_status(
+    db: Session, owner_id: int, status: ServerStatus
+) -> int:
+    """Hitung server milik owner dengan status tertentu (untuk dashboard)."""
+    return (
+        db.query(Server)
+        .filter(Server.owner_id == owner_id, Server.status == status)
+        .count()
+    )
+
+
 def create(db: Session, owner_id: int, payload: ServerCreate) -> Server:
     """Buat entri server baru. Commit dan refresh dilakukan di sini."""
     server = Server(
@@ -43,6 +59,7 @@ def create(db: Session, owner_id: int, payload: ServerCreate) -> Server:
         host=payload.host,
         port=payload.port,
         username=payload.username,
+        exporter_instance=payload.exporter_instance,
         auth_type=payload.auth_type,
         password=payload.password,
         private_key=payload.private_key,

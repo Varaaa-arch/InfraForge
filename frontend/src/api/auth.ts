@@ -1,5 +1,5 @@
 import { apiFetch } from "@/api/client";
-import type { AuthTokens, User } from "@/types/auth";
+import type { AuthTokens, RegisterPayload, User } from "@/types/auth";
 
 export interface LoginPayload {
   username: string;
@@ -10,6 +10,18 @@ export function loginRequest({ username, password }: LoginPayload): Promise<Auth
   return apiFetch<AuthTokens>("/auth/login", {
     method: "POST",
     body: new URLSearchParams({ username, password }),
+    skipAuthRefresh: true,
+  });
+}
+
+export function registerRequest({
+  username,
+  email,
+  password,
+}: RegisterPayload): Promise<User> {
+  return apiFetch<User>("/auth/register", {
+    method: "POST",
+    json: { username, email, password },
     skipAuthRefresh: true,
   });
 }

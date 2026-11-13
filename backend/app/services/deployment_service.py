@@ -421,6 +421,11 @@ def get_deployment(db: Session, deployment_id: int) -> Deployment | None:
     return deployment_repository.get_by_id(db, deployment_id)
 
 
+def count_deployments_for_applications(db: Session, application_ids: list[int]) -> int:
+    """Hitung jumlah deployment untuk aplikasi milik user (untuk dashboard)."""
+    return deployment_repository.count_by_application_ids(db, application_ids)
+
+
 def list_deployments(
     db: Session,
     application_ids: list[int],

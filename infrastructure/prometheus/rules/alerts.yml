@@ -1,0 +1,81 @@
+groups:
+  - name: host-resources
+    rules:
+      - alert: HighHostCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 5m
+        labels:
+          severity: critical
+          component: host
+        annotations:
+          summary: 'CPU host {{ $labels.instance }} tinggi'
+          description: 'Penggunaan CPU {{ printf "%.1f" $value }}% selama 5 menit terakhir.'
+
+      - alert: HighHostMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+          component: host
+        annotations:
+          summary: 'RAM host {{ $labels.instance }} tinggi'
+          description: 'Penggunaan RAM {{ printf "%.1f" $value }}% selama 5 menit terakhir.'
+
+      - alert: HighDiskUsage
+        expr: |
+          (1 - (
+            node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs|ramfs|fuse.lxcfs"}
+            /
+            node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs|ramfs|fuse.lxcfs"}
+          )) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+          component: host
+        annotations:
+          summary: 'Disk {{ $labels.mountpoint }} pada {{ $labels.instance }} hampir penuh'
+          description: 'Penggunaan disk {{ printf "%.1f" $value }}% (melebihi 90%).'
+
+  - name: containers
+    rules:
+      - alert: InfraContainerDown
+        expr: infraforge_container_up{compose_project="infraforge"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: container
+        annotations:
+          summary: 'Container {{ $labels.name }} berhenti'
+          description: 'Container {{ $labels.name }} (service {{ $labels.service }}) berstatus {{ $labels.state }} selama 2 menit.'
+
+      - alert: ContainerRestartLoop
+        expr: delta(infraforge_container_restart_count{compose_project="infraforge"}[15m]) > 2
+        for: 1m
+        labels:
+          severity: critical
+          component: container
+        annotations:
+          summary: 'Container {{ $labels.name }} restart berulang'
+          description: 'Container {{ $labels.name }} restart {{ printf "%.0f" $value }} kali dalam 15 menit terakhir.'
+
+  - name: monitoring
+    rules:
+      - alert: DockerDaemonUnavailable
+        expr: infraforge_docker_available == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: monitoring
+        annotations:
+          summary: 'Backend tidak dapat mengakses Docker daemon'
+          description: 'Exporter InfraForge gagal menghubungi Docker daemon selama 2 menit.'
+
+      - alert: MonitoringTargetDown
+        expr: up{job=~"prometheus|node-exporter|cadvisor|alertmanager|backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: monitoring
+        annotations:
+          summary: 'Target monitoring {{ $labels.job }} down'
+          description: 'Prometheus gagal melakukan scrape ke {{ $labels.instance }} (job {{ $labels.job }}) selama 2 menit.'

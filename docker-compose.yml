@@ -22,9 +22,12 @@ services:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       LOKI_URL: http://loki:3100
+      PROMETHEUS_URL: http://prometheus:9090
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-dev-alert-token}
     depends_on:
       - postgres
       - redis
+      - prometheus
     security_opt:
       - label=disable
     volumes:
@@ -56,6 +59,7 @@ services:
       - "9090:9090"
     volumes:
       - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
+      - ./infrastructure/prometheus/rules:/etc/prometheus/rules:ro,Z
       - prometheus_data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -63,6 +67,29 @@ services:
       - --storage.tsdb.retention.time=15d
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - alertmanager
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.35.0
+    container_name: infraforge-alertmanager
+    ports:
+      - "9093:9093"
+    environment:
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-dev-alert-token}
+    volumes:
+      - ./infrastructure/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.template.yml:ro,Z
+      - alertmanager_data:/alertmanager
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        sed "s|__ALERT_WEBHOOK_SECRET__|$${ALERT_WEBHOOK_SECRET}|g" \
+          /etc/alertmanager/alertmanager.template.yml \
+          > /etc/alertmanager/alertmanager.yml
+        exec /bin/alertmanager \
+          --config.file=/etc/alertmanager/alertmanager.yml \
+          --storage.path=/alertmanager
     restart: unless-stopped
 
   node-exporter:
@@ -124,3 +151,4 @@ volumes:
   prometheus_data:
   loki_data:
   promtail_positions:
+  alertmanager_data:

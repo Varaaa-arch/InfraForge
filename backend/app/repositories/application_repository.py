@@ -116,3 +116,14 @@ def delete(db: Session, application: Application) -> None:
 def count_by_project(db: Session, project_id: int) -> int:
     """Hitung jumlah aplikasi dalam sebuah project (untuk dashboard)."""
     return db.query(Application).filter(Application.project_id == project_id).count()
+
+
+def count_by_project_ids(db: Session, project_ids: list[int]) -> int:
+    """Hitung jumlah aplikasi lintas project milik user (untuk dashboard)."""
+    if not project_ids:
+        return 0
+    return (
+        db.query(Application)
+        .filter(Application.project_id.in_(project_ids))
+        .count()
+    )

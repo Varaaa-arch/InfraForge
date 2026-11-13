@@ -12,6 +12,14 @@ class ServerCreate(BaseModel):
     host: str = Field(min_length=1, max_length=253, description="IP address atau hostname")
     port: int = Field(default=22, ge=1, le=65535, description="Port SSH (default 22)")
     username: str = Field(min_length=1, max_length=100, description="SSH username")
+    exporter_instance: str | None = Field(
+        default=None,
+        max_length=253,
+        description=(
+            "Label instance Prometheus (job=node-exporter) untuk metrik server, "
+            "mis. host.docker.internal:9100"
+        ),
+    )
     auth_type: AuthType = Field(description="Metode autentikasi: password atau private_key")
     password: str | None = Field(default=None, description="Password SSH (wajib jika auth_type=password)")
     private_key: str | None = Field(default=None, description="Isi private key SSH (wajib jika auth_type=private_key)")
@@ -32,6 +40,7 @@ class ServerUpdate(BaseModel):
     host: str | None = Field(default=None, min_length=1, max_length=253)
     port: int | None = Field(default=None, ge=1, le=65535)
     username: str | None = Field(default=None, min_length=1, max_length=100)
+    exporter_instance: str | None = Field(default=None, max_length=253)
     auth_type: AuthType | None = None
     password: str | None = None
     private_key: str | None = None
@@ -49,6 +58,7 @@ class ServerResponse(BaseModel):
     host: str
     port: int
     username: str
+    exporter_instance: str | None
     auth_type: AuthType
     status: ServerStatus
     created_at: datetime

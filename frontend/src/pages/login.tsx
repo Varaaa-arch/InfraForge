@@ -10,13 +10,19 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
 import { FullScreenLoader } from "@/components/full-screen-loader";
 import { BrandMark } from "@/components/layout/app-sidebar";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
@@ -234,9 +240,14 @@ export function LoginPage() {
             <CardHeader className="gap-1">
               <CardTitle className="text-sm">Belum punya akun?</CardTitle>
               <CardDescription className="text-xs">
-                Pendaftaran akun dilakukan oleh administrator melalui API atau CLI InfraForge.
+                Daftar langsung dari dashboard, tanpa perlu akses CLI.
               </CardDescription>
             </CardHeader>
+            <CardContent>
+              <Button asChild variant="outline" size="sm" className="w-full">
+                <Link to="/register">Daftar di sini</Link>
+              </Button>
+            </CardContent>
           </Card>
         </div>
       </div>

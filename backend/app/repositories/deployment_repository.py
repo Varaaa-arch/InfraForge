@@ -126,6 +126,17 @@ def create(
     return deployment
 
 
+def count_by_application_ids(db: Session, application_ids: list[int]) -> int:
+    """Hitung jumlah deployment untuk sekumpulan application_id (untuk dashboard)."""
+    if not application_ids:
+        return 0
+    return (
+        db.query(Deployment)
+        .filter(Deployment.application_id.in_(application_ids))
+        .count()
+    )
+
+
 def get_last_successful(
     db: Session,
     application_id: int,

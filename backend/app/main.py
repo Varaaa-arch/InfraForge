@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from app.api import applications, auth, containers, dashboard, deployments, docker, env_vars, health, logs, projects, servers, users, webhooks
+from app.api import alerts, applications, auth, containers, dashboard, deployments, docker, env_vars, health, logs, metrics, projects, servers, users, webhooks
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -89,6 +89,13 @@ tags_metadata = [
         ),
     },
     {
+        "name": "alerts",
+        "description": (
+            "Alerting System: riwayat alert dari Prometheus/Alertmanager, "
+            "webhook Alertmanager, dan channel notifikasi Discord/Telegram."
+        ),
+    },
+    {
         "name": "webhooks",
         "description": (
             "GitHub Webhook Handler — menerima push event dari GitHub dan "
@@ -148,6 +155,9 @@ app.include_router(applications.router)
 app.include_router(docker.router)
 app.include_router(containers.router)
 app.include_router(logs.router)
+app.include_router(alerts.router)
+app.include_router(alerts.channels_router)
+app.include_router(metrics.router)
 app.include_router(deployments.router)
 app.include_router(webhooks.router)
 app.include_router(router_ws)

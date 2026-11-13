@@ -29,6 +29,14 @@ class Server(Base):
     host: Mapped[str] = mapped_column(String(253), nullable=False)
     port: Mapped[int] = mapped_column(Integer, default=22, server_default="22", nullable=False)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
+    exporter_instance: Mapped[str | None] = mapped_column(
+        String(253),
+        nullable=True,
+        comment=(
+            "Label instance Prometheus (job=node-exporter) untuk metrik server ini, "
+            "mis. host.docker.internal:9100. NULL = metrik belum tersedia."
+        ),
+    )
     auth_type: Mapped[AuthType] = mapped_column(
         Enum(AuthType, name="server_auth_type", values_callable=lambda e: [m.value for m in e]),
         nullable=False,

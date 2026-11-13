@@ -19,6 +19,12 @@ from pydantic import BaseModel
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.schemas.common import MessageResponse
+from app.schemas.metrics import (
+    ContainerBlockIOStats,
+    ContainerMemoryStats,
+    ContainerMetricsResponse,
+    ContainerNetworkStats,
+)
 from app.schemas.response import ApiResponse
 from app.services import container_service
 
@@ -88,6 +94,55 @@ def list_containers(
         )
     except RuntimeError as exc:
         raise _handle_runtime(exc)
+
+
+@router.get(
+    "/{container_id}/metrics",
+    response_model=ApiResponse[ContainerMetricsResponse],
+    summary="Statistik resource container",
+    description=(
+        "Snapshot CPU dan RAM (plus network & block I/O) langsung dari Docker "
+        "daemon via `container.stats(stream=False)`. Tidak bergantung pada cAdvisor."
+    ),
+    responses={
+        404: {"description": "Container tidak ditemukan"},
+        503: {"description": "Docker daemon tidak tersedia"},
+    },
+)
+def get_container_metrics(
+    container_id: str,
+    _: User = Depends(get_current_user),
+) -> ApiResponse[ContainerMetricsResponse]:
+    try:
+        stats = container_service.get_stats(container_id)
+    except RuntimeError as exc:
+        raise _handle_runtime(exc)
+
+    return ApiResponse(
+        data=ContainerMetricsResponse(
+            container_id=stats.id,
+            name=stats.name,
+            image=stats.image,
+            status=stats.status,
+            cpu_percent=stats.cpu_percent,
+            cpu_count=stats.cpu_count,
+            memory=ContainerMemoryStats(
+                usage_bytes=stats.memory_usage_bytes,
+                limit_bytes=stats.memory_limit_bytes,
+                percent=stats.memory_percent,
+            ),
+            network=ContainerNetworkStats(
+                rx_bytes=stats.network_rx_bytes,
+                tx_bytes=stats.network_tx_bytes,
+            ),
+            blkio=ContainerBlockIOStats(
+                read_bytes=stats.blkio_read_bytes,
+                write_bytes=stats.blkio_write_bytes,
+            ),
+            pids_current=stats.pids_current,
+            sampled_at=stats.sampled_at,
+        )
+    )
 
 
 @router.post(

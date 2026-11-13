@@ -15,8 +15,10 @@ import {
 } from "@/components/ui/sheet";
 
 const pageTitles: Record<string, string> = {
-  "/": "Dashboard",
+  "/": "Overview",
+  "/monitoring": "Monitoring",
   "/logs": "Logs",
+  "/alerts": "Alerts",
 };
 
 export function AppLayout() {

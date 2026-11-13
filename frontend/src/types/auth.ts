@@ -4,6 +4,12 @@ export interface AuthTokens {
   token_type: string;
 }
 
+export interface RegisterPayload {
+  username: string;
+  email: string;
+  password: string;
+}
+
 export interface User {
   id: number;
   username: string;

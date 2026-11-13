@@ -7,7 +7,7 @@ Router API memanggil fungsi-fungsi di sini.
 
 from sqlalchemy.orm import Session
 
-from app.models.server import Server
+from app.models.server import Server, ServerStatus
 from app.repositories import server_repository
 from app.schemas.server import ServerCreate, ServerUpdate, SSHTestResult
 from app.services import ssh_service
@@ -26,6 +26,18 @@ def get_server_for_owner(db: Session, server_id: int, owner_id: int) -> Server |
 def list_servers(db: Session, owner_id: int) -> list[Server]:
     """Daftar semua server milik owner."""
     return server_repository.list_by_owner(db, owner_id)
+
+
+def count_servers(db: Session, owner_id: int) -> int:
+    """Hitung jumlah server milik owner (untuk dashboard)."""
+    return server_repository.count_by_owner(db, owner_id)
+
+
+def count_servers_by_status(
+    db: Session, owner_id: int, status: ServerStatus
+) -> int:
+    """Hitung server milik owner dengan status tertentu (untuk dashboard)."""
+    return server_repository.count_by_owner_and_status(db, owner_id, status)
 
 
 def create_server(db: Session, owner_id: int, payload: ServerCreate) -> Server:

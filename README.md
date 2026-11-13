@@ -15,9 +15,10 @@
 - [Tech Stack](#tech-stack)
 - [Struktur Folder](#struktur-folder)
 - [Getting Started](#getting-started)
+- [Alerting](#alerting)
 - [Roadmap](#roadmap)
 - [Kenapa Namanya InfraForge?](#kenapa-namanya-infraforge)
-- [License](#license)
+- [Lisensi](#lisensi)
 
 ---
 
@@ -100,6 +101,7 @@ flowchart TD
 | **Container Management** | Start, stop, restart, delete, view logs |
 | **Monitoring** | CPU, RAM, Disk, Docker, Network, Uptime |
 | **Logging** | Lihat log seluruh container dari satu tempat |
+| **Alerting** | Rules Prometheus, riwayat alert, notifikasi Discord/Telegram |
 | **Project Management** | Satu server bisa kelola banyak project sekaligus |
 | **Authentication** | JWT-based authentication |
 | **Backup** | Backup database & file ke MinIO |
@@ -225,13 +227,16 @@ InfraForge/
 ```bash
 git clone https://github.com/Varaaa-arch/InfraForge.git
 cd InfraForge
-cp .env.example .env
+cp backend/.env.example backend/.env
+# Sesuaikan SECRET_KEY dan ENCRYPTION_KEY di backend/.env sebelum production:
+#   openssl rand -hex 32
 docker compose up -d
 ```
 
 - Dashboard: http://localhost:5173
 - API / Swagger: http://localhost:8000/docs (via dashboard: http://localhost:5173/api/docs)
 - Prometheus: http://localhost:9090
+- Alertmanager: http://localhost:9093
 - cAdvisor: http://localhost:8081
 - Loki: http://localhost:3100
 
@@ -246,6 +251,93 @@ npm run dev
 ```
 
 > Setup lengkap masih dalam pengembangan, instruksi detail akan ditambahkan seiring progress.
+
+### Akun demo & data contoh
+
+Belum punya akun? Buka http://localhost:5173/register untuk mendaftar langsung
+dari dashboard.
+
+Untuk mengisi aplikasi dengan data contoh (project, server, aplikasi,
+deployment, environment variable, riwayat alert, dan channel notifikasi
+nonaktif), jalankan seeder. Seeder bersifat idempotent — aman dijalankan
+berkali-kali karena data demo lama dibuat ulang:
+
+```bash
+docker compose exec backend uv run --no-dev python scripts/seed_demo.py
+```
+
+| Kredensial | Nilai |
+|---|---|
+| Username | `demo` |
+| Password | `demo1234` |
+
+| Data | Jumlah |
+|---|---|
+| Project | 1 |
+| Server | 2 |
+| Aplikasi | 2 |
+| Deployment | 4 |
+| Environment variable | 2 |
+| Riwayat alert | 24 (firing & resolved) |
+| Channel notifikasi | 1 (nonaktif) |
+
+> Channel **Demo Discord (nonaktif)** berisi URL webhook placeholder. Ganti
+> dengan URL asli lewat halaman Alerts sebelum diaktifkan.
+
+---
+
+## Alerting
+
+Alert mengalir dari Prometheus ke Alertmanager, lalu diteruskan ke backend
+InfraForge lewat webhook terautentikasi. Backend menyimpan riwayat alert dan
+mengirim notifikasi ke channel Discord/Telegram yang aktif.
+
+```
+Prometheus rules → Alertmanager (9093)
+  → POST /alerts/webhook (X-InfraForge-Token)
+  → PostgreSQL + Discord/Telegram
+```
+
+Akses halaman **Alerts** di dashboard untuk melihat riwayat firing/resolved dan
+mengelola channel notifikasi (tambah, aktif/nonaktif, test, hapus).
+
+**Rules bawaan**
+
+| Rule | Kondisi |
+|---|---|
+| `HighHostCPUUsage` | CPU host > 90% selama 5 menit |
+| `HighHostMemoryUsage` | RAM host > 90% selama 5 menit |
+| `HighDiskUsage` | Disk host > 90% selama 5 menit |
+| `InfraContainerDown` | Container compose `infraforge` mati selama 2 menit |
+| `ContainerRestartLoop` | Restart container > 2 kali dalam 15 menit |
+| `DockerDaemonUnavailable` | Docker daemon tidak terdeteksi |
+| `MonitoringTargetDown` | Target scrape Prometheus down |
+
+**Konfigurasi**
+
+- `ALERT_WEBHOOK_SECRET` — token header `X-InfraForge-Token`; harus sama di
+  backend dan Alertmanager. Default development: `dev-alert-token`. Ganti di
+  production.
+- `ALERT_REQUEST_TIMEOUT` — timeout pengiriman notifikasi (detik, default 10).
+- Webhook Alertmanager diarahkan ke `http://backend:8000/alerts/webhook` pada
+  `infrastructure/alertmanager/alertmanager.yml`.
+
+> Catatan: cAdvisor pada host dengan storage containerd/overlayfs tertentu tidak
+> dapat melihat container Docker. Metrik container (`up`, restart count)
+> dipasok exporter backend di `GET /metrics`, sedangkan rule CPU/RAM/Disk
+> berbasis metrik host dari node-exporter.
+
+---
+
+## Roadmap
+
+- [x] Centralized logging (Loki + Promtail + WebSocket tail)
+- [x] Monitoring stack (Prometheus, Node Exporter, cAdvisor)
+- [x] Alerting (Alertmanager, webhook relay, Discord/Telegram)
+- [ ] UI manajemen server, aplikasi, dan deployment
+- [ ] Grafana dashboards & Traefik reverse proxy
+- [ ] Object storage MinIO untuk artefak deployment
+- [ ] Backup receiver Alertmanager (cadangan saat backend down)
 
 ---
 

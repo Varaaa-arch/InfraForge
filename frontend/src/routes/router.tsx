@@ -12,6 +12,13 @@ export const router = createBrowserRouter([
     },
   },
   {
+    path: "/register",
+    lazy: async () => {
+      const { RegisterPage } = await import("@/pages/register");
+      return { Component: RegisterPage };
+    },
+  },
+  {
     element: <ProtectedRoute />,
     children: [
       {
@@ -25,10 +32,24 @@ export const router = createBrowserRouter([
             },
           },
           {
+            path: "monitoring",
+            lazy: async () => {
+              const { MonitoringPage } = await import("@/pages/monitoring");
+              return { Component: MonitoringPage };
+            },
+          },
+          {
             path: "logs",
             lazy: async () => {
               const { LogsPage } = await import("@/pages/logs");
               return { Component: LogsPage };
+            },
+          },
+          {
+            path: "alerts",
+            lazy: async () => {
+              const { AlertsPage } = await import("@/pages/alerts");
+              return { Component: AlertsPage };
             },
           },
         ],

@@ -1,0 +1,19 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: infraforge-webhook
+  group_by: ["alertname", "container", "instance"]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+
+receivers:
+  - name: infraforge-webhook
+    webhook_configs:
+      - url: "http://backend:8000/alerts/webhook"
+        send_resolved: true
+        http_config:
+          http_headers:
+            X-InfraForge-Token:
+              values: ["__ALERT_WEBHOOK_SECRET__"]

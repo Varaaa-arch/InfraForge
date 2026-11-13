@@ -12,6 +12,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request: Request, 
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        if request.url.path == "/metrics":
+            return await call_next(request)
+
         start_time = time.perf_counter()
         response = await call_next(request)
         duration_ms = (time.perf_counter() - start_time) * 1000

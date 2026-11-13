@@ -50,6 +50,27 @@ class Settings(BaseSettings):
     GITHUB_WEBHOOK_SECRET: str = ""
 
     # ---------------------------------------------------------------------------
+    # Prometheus (Server & Container Metrics)
+    # ---------------------------------------------------------------------------
+    # Base URL Prometheus HTTP API. Di dalam Docker Compose gunakan http://prometheus:9090.
+    PROMETHEUS_URL: str = "http://localhost:9090"
+    # Timeout request ke Prometheus (detik).
+    PROMETHEUS_TIMEOUT: float = 10.0
+    # Batas jumlah titik data per seri pada /servers/{id}/metrics.
+    METRICS_MAX_POINTS: int = 240
+    # Rentang waktu maksimum query range (7 hari).
+    METRICS_MAX_RANGE_SECONDS: int = 7 * 86400
+
+    # ---------------------------------------------------------------------------
+    # Alerting (Prometheus + Alertmanager)
+    # ---------------------------------------------------------------------------
+    # Token yang harus disertakan Alertmanager pada URL webhook backend.
+    # Kosong = endpoint webhook menolak request (fail-closed).
+    ALERT_WEBHOOK_SECRET: str = ""
+    # Timeout request HTTP ke Discord/Telegram (detik).
+    ALERT_REQUEST_TIMEOUT: float = 10.0
+
+    # ---------------------------------------------------------------------------
     # ARQ Worker (Async Redis Queue)
     # ---------------------------------------------------------------------------
     # Jumlah job yang bisa diproses worker secara bersamaan.

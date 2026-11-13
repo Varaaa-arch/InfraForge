@@ -18,6 +18,10 @@ from app.database.session import Base  # noqa: E402
 
 # import ALL model modules so Base.metadata includes every table
 from app.models import (  # noqa: F401, E402
+    AlertChannel,
+    AlertChannelType,
+    AlertEvent,
+    AlertStatus,
     AppStatus,
     Application,
     AuthType,
