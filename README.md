@@ -16,6 +16,7 @@
 - [Struktur Folder](#struktur-folder)
 - [Getting Started](#getting-started)
 - [Alerting](#alerting)
+- [Milestone 4 — Verifikasi Observability](#milestone-4--verifikasi-observability)
 - [Roadmap](#roadmap)
 - [Kenapa Namanya InfraForge?](#kenapa-namanya-infraforge)
 - [Lisensi](#lisensi)
@@ -326,6 +327,28 @@ mengelola channel notifikasi (tambah, aktif/nonaktif, test, hapus).
 > dapat melihat container Docker. Metrik container (`up`, restart count)
 > dipasok exporter backend di `GET /metrics`, sedangkan rule CPU/RAM/Disk
 > berbasis metrik host dari node-exporter.
+
+---
+
+## Milestone 4 — Verifikasi Observability
+
+DoD Milestone 4 sudah diverifikasi end-to-end. Bukti lengkap (tabel waktu,
+perintah reproduksi, dan hasil pengujian) ada di
+[`docs/milestone-4-verification.md`](docs/milestone-4-verification.md).
+
+- **Metrik** — 5/5 target Prometheus `up` (prometheus, node-exporter, cAdvisor,
+  Alertmanager, backend). Exporter backend mengekspos
+  `infraforge_container_cpu_percent` dan `infraforge_container_memory_bytes`
+  dengan label container, lalu Prometheus men-scrape-nya untuk tren historis.
+- **Log real-time** — Loki + Promtail mengindeks log container; live tail
+  lewat `WS /ws/logs` (diuji E2E). Port Promtail `9080` dipublikasikan untuk
+  debugging (`/targets`, `/ready`, `/metrics`).
+- **Alert Discord** — canary alert menempuh jalur lengkap
+  Prometheus → Alertmanager → webhook backend → `alert_events` → Discord
+  `InfraDC` (firing dan resolved), lalu rule canary dihapus.
+- **UI** — Overview (6 kartu + health server), Monitoring (4 grafik +
+  panel Top container), Alerts (tabel), dan Logs; E2E Playwright lulus
+  (24/24, 9/9, dan 5/5) tanpa page error.
 
 ---
 
