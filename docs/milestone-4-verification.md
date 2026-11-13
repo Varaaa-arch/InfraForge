@@ -147,8 +147,7 @@ curl -s http://127.0.0.1:9093/api/v2/alerts
 
 Hasil pengujian otomatis pada verifikasi ini:
 
-- `pytest`: **639 passed**, 5 failure pre-existing pada `tests/test_cli.py`
-  (tidak terkait Milestone 4).
+- `pytest`: **644 passed**, 0 failure.
 - `ruff check app tests`: 10 temuan baseline.
 - `mypy app`: 3 temuan baseline pada `app/worker.py`.
 - `npm run lint`: 3 warning baseline (fast-refresh & efek React).

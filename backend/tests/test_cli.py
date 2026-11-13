@@ -13,7 +13,7 @@ Coverage:
 - logout command
 - deploy command (success, 404, 401, server error)
 - status command (success, 404, 401, server error)
-- logs command (no log_path, file exists, file missing, tail, 404, 401)
+- logs command (konten API, tail, deployment tanpa log, file hilang, 404, 401)
 """
 
 from __future__ import annotations
@@ -437,73 +437,74 @@ class TestLogsCommand:
             {"base_url": "http://localhost:8000", "token": "valid_token"},
         )
 
-    def _dep_response(self, log_path: str | None = None, status: str = "success") -> MagicMock:
-        return _mock_response(
-            200,
-            {
-                "data": {
-                    "id": 10,
-                    "status": status,
-                    "log_path": log_path,
-                    "branch": "main",
-                }
-            },
-        )
+    def _log_response(self, content: str) -> MagicMock:
+        resp = _mock_response(200, {})
+        resp.text = content
+        return resp
 
-    def test_logs_shows_file_content(
-        self, tmp_config: Path, tmp_path: Path
-    ) -> None:
+    def test_logs_prints_api_content(self, tmp_config: Path) -> None:
         self._with_auth_config(tmp_config)
-        log_file = tmp_path / "deploy.log"
-        log_file.write_text(
-            "[InfraForge] Start\n[InfraForge] Done\n", encoding="utf-8"
-        )
-        mock_resp = self._dep_response(log_path=str(log_file))
-        with patch("app.cli._request", return_value=mock_resp):
+        content = "[InfraForge] Start\n[InfraForge] Done"
+        with patch(
+            "app.cli._request", return_value=self._log_response(content)
+        ) as request:
             result = runner.invoke(app, ["logs", "10"])
         assert result.exit_code == 0
         assert "[InfraForge] Start" in result.output
         assert "[InfraForge] Done" in result.output
+        assert request.call_args.kwargs["params"] == {"tail": 200}
 
-    def test_logs_tail_limits_output(
-        self, tmp_config: Path, tmp_path: Path
-    ) -> None:
+    def test_logs_tail_limits_output(self, tmp_config: Path) -> None:
         self._with_auth_config(tmp_config)
-        log_file = tmp_path / "deploy.log"
-        lines = [f"line {i}\n" for i in range(20)]
-        log_file.write_text("".join(lines))
-        mock_resp = self._dep_response(log_path=str(log_file))
-        with patch("app.cli._request", return_value=mock_resp):
+        tail_content = "\n".join(f"line {i}" for i in range(15, 20))
+        with patch(
+            "app.cli._request", return_value=self._log_response(tail_content)
+        ) as request:
             result = runner.invoke(app, ["logs", "10", "--tail", "5"])
         assert result.exit_code == 0
         assert "line 19" in result.output
         assert "line 0" not in result.output
+        assert request.call_args.kwargs["params"] == {"tail": 5}
 
-    def test_logs_tail_zero_shows_all(
-        self, tmp_config: Path, tmp_path: Path
-    ) -> None:
+    def test_logs_tail_zero_shows_all(self, tmp_config: Path) -> None:
         self._with_auth_config(tmp_config)
-        log_file = tmp_path / "deploy.log"
-        lines = [f"line {i}\n" for i in range(10)]
-        log_file.write_text("".join(lines))
-        mock_resp = self._dep_response(log_path=str(log_file))
-        with patch("app.cli._request", return_value=mock_resp):
+        content = "\n".join(f"line {i}" for i in range(10))
+        with patch(
+            "app.cli._request", return_value=self._log_response(content)
+        ) as request:
             result = runner.invoke(app, ["logs", "10", "--tail", "0"])
         assert result.exit_code == 0
         assert "line 0" in result.output
         assert "line 9" in result.output
+        assert request.call_args.kwargs["params"] == {"tail": 0}
 
     def test_logs_no_log_path_shows_message(self, tmp_config: Path) -> None:
         self._with_auth_config(tmp_config)
-        mock_resp = self._dep_response(log_path=None, status="pending")
+        mock_resp = _mock_response(
+            404,
+            {
+                "success": False,
+                "message": (
+                    "Deployment #10 belum memiliki log file (status: pending)"
+                ),
+                "code": 404,
+            },
+        )
         with patch("app.cli._request", return_value=mock_resp):
             result = runner.invoke(app, ["logs", "10"])
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert "belum memiliki log file" in result.output
 
     def test_logs_file_missing_exits(self, tmp_config: Path) -> None:
         self._with_auth_config(tmp_config)
-        mock_resp = self._dep_response(log_path="/tmp/nonexistent_deploy_99999.log")
+        mock_resp = _mock_response(
+            404,
+            {
+                "success": False,
+                "message": "File log tidak ditemukan: /tmp/deploy_10.log",
+                "code": 404,
+            },
+        )
         with patch("app.cli._request", return_value=mock_resp):
             result = runner.invoke(app, ["logs", "10"])
         assert result.exit_code == 1
