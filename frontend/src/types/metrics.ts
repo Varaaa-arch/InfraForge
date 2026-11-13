@@ -37,3 +37,22 @@ export interface ServerMetrics {
   generated_at: string;
   series: Partial<Record<ServerMetricKey, MetricSeries>>;
 }
+
+export interface ContainerTrend {
+  name: string;
+  service: string | null;
+  compose_project: string | null;
+  image: string | null;
+  cpu_percent: number;
+  memory_bytes: number;
+  cpu_points: MetricPoint[];
+}
+
+export interface ContainerTrends {
+  range: string;
+  step_seconds: number;
+  available: boolean;
+  message: string | null;
+  generated_at: string;
+  containers: ContainerTrend[];
+}

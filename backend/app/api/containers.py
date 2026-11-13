@@ -24,9 +24,10 @@ from app.schemas.metrics import (
     ContainerMemoryStats,
     ContainerMetricsResponse,
     ContainerNetworkStats,
+    ContainerTrendsResponse,
 )
 from app.schemas.response import ApiResponse
-from app.services import container_service
+from app.services import container_service, container_trends_service
 
 router = APIRouter(prefix="/containers", tags=["containers"])
 
@@ -94,6 +95,38 @@ def list_containers(
         )
     except RuntimeError as exc:
         raise _handle_runtime(exc)
+
+
+@router.get(
+    "/usage/top",
+    response_model=ApiResponse[ContainerTrendsResponse],
+    summary="Tren top container (CPU/RAM)",
+    description=(
+        "Menampilkan container dengan pemakaian CPU tertinggi beserta tren CPU "
+        "historis dari Prometheus. Metrik berasal dari exporter backend "
+        "(`infraforge_container_cpu_percent` & `infraforge_container_memory_bytes`) "
+        "yang di-scrape setiap 15 detik. Gunakan `?range=15m|1h|6h|24h`."
+    ),
+    responses={
+        400: {"description": "Format range tidak valid"},
+    },
+)
+def top_container_usage(
+    range_value: str = Query(
+        default="1h",
+        alias="range",
+        description="Rentang tren CPU (15m, 1h, 6h, 24h, maks 7d)",
+    ),
+    limit: int = Query(default=5, ge=1, le=20, description="Jumlah container teratas"),
+    _: User = Depends(get_current_user),
+) -> ApiResponse[ContainerTrendsResponse]:
+    try:
+        data = container_trends_service.collect(range_value, limit)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
+    return ApiResponse(data=data)
 
 
 @router.get(

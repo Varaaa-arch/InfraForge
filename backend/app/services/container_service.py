@@ -111,7 +111,7 @@ def count_containers(all_containers: bool = True) -> int:
     return len(list_containers(all_containers=all_containers))
 
 
-def get_stats(container_id: str) -> ContainerStats:
+def get_stats(container_id: str, client: Any | None = None) -> ContainerStats:
     """
     Ambil snapshot statistik CPU/RAM/network/block-I/O container.
 
@@ -123,9 +123,13 @@ def get_stats(container_id: str) -> ContainerStats:
 
     Memory percent mengikuti perilaku ``docker stats``: page cache
     (``inactive_file``/``cache``) dikurangkan dari ``usage``.
+
+    Args:
+        container_id: ID atau nama container.
+        client: Client Docker yang sudah ada (opsional, untuk efisiensi scrape).
     """
-    client = _get_client()
-    container = _get_container(client, container_id)
+    resolved_client = client or _get_client()
+    container = _get_container(resolved_client, container_id)
     try:
         raw = container.stats(stream=False)
     except Exception as exc:

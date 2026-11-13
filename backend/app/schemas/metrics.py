@@ -67,6 +67,29 @@ class ContainerBlockIOStats(BaseModel):
     write_bytes: int
 
 
+class ContainerTrend(BaseModel):
+    """Satu container pada panel tren (CPU/RAM dari exporter backend)."""
+
+    name: str
+    service: str | None = None
+    compose_project: str | None = None
+    image: str | None = None
+    cpu_percent: float
+    memory_bytes: int
+    cpu_points: list[MetricPoint] = Field(default_factory=list)
+
+
+class ContainerTrendsResponse(BaseModel):
+    """Respons GET /containers/usage/top."""
+
+    range: str
+    step_seconds: int
+    available: bool
+    message: str | None = None
+    generated_at: datetime
+    containers: list[ContainerTrend] = Field(default_factory=list)
+
+
 class ContainerMetricsResponse(BaseModel):
     """Respons GET /containers/{id}/metrics."""
 

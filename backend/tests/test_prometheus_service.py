@@ -206,3 +206,64 @@ class TestQueryBuilders:
     def test_network_queries_exclude_loopback(self) -> None:
         assert 'device!="lo"' in prometheus_service.build_network_rx_query(self.instance)
         assert 'device!="lo"' in prometheus_service.build_network_tx_query(self.instance)
+
+
+class TestQueryInstantSamples:
+    def test_parses_labels_and_skips_invalid_values(self) -> None:
+        payload = _success(
+            {
+                "result": [
+                    {
+                        "metric": {"__name__": "m", "name": "web"},
+                        "value": [1700000000, "12.5"],
+                    },
+                    {
+                        "metric": {"__name__": "m", "name": "api"},
+                        "value": [1700000000, "NaN"],
+                    },
+                    {
+                        "metric": {"__name__": "m", "name": "db"},
+                        "value": [1700000000, "3"],
+                    },
+                ]
+            }
+        )
+        with patch(
+            "app.services.prometheus_service.httpx.get",
+            return_value=_response(payload),
+        ):
+            samples = prometheus_service.query_instant_samples("m")
+
+        assert [(sample.labels, sample.value) for sample in samples] == [
+            ({"name": "web"}, 12.5),
+            ({"name": "db"}, 3.0),
+        ]
+
+    def test_returns_empty_for_no_result(self) -> None:
+        payload = _success({"result": []})
+        with patch(
+            "app.services.prometheus_service.httpx.get",
+            return_value=_response(payload),
+        ):
+            assert prometheus_service.query_instant_samples("m") == []
+
+
+class TestContainerQueryBuilders:
+    def test_top_query_uses_topk_and_running_filter(self) -> None:
+        query = prometheus_service.build_top_containers_cpu_query(5)
+
+        assert query.startswith("topk(5,")
+        assert "infraforge_container_cpu_percent" in query
+        assert "infraforge_container_up" in query
+        assert 'name!=""' in query
+        assert "[5m]" in query
+
+    def test_range_query_escapes_container_name(self) -> None:
+        query = prometheus_service.build_container_cpu_range_query('web"x')
+
+        assert query == 'infraforge_container_cpu_percent{name="web\\"x"}'
+
+    def test_memory_query_matches_container_name(self) -> None:
+        query = prometheus_service.build_container_memory_query("infraforge-backend")
+
+        assert query == 'infraforge_container_memory_bytes{name="infraforge-backend"}'

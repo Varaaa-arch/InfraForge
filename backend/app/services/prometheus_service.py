@@ -43,6 +43,12 @@ class PrometheusSeries:
     points: list[MetricPoint] = field(default_factory=list)
 
 
+@dataclass
+class InstantSample:
+    labels: dict[str, str] = field(default_factory=dict)
+    value: float = 0.0
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -176,6 +182,25 @@ def query_instant(promql: str) -> float | None:
     return _parse_value(value_pair[1])
 
 
+def query_instant_samples(promql: str) -> list[InstantSample]:
+    """Jalankan ``query`` instan dan kembalikan semua sampel beserta labelnya."""
+    data = _request("/api/v1/query", {"query": promql})
+
+    samples: list[InstantSample] = []
+    for item in data.get("result") or []:
+        value_pair = item.get("value") or [None, None]
+        value = _parse_value(value_pair[1])
+        if value is None:
+            continue
+        labels = {
+            key: label_value
+            for key, label_value in (item.get("metric") or {}).items()
+            if key != "__name__"
+        }
+        samples.append(InstantSample(labels=labels, value=value))
+    return samples
+
+
 def list_node_exporter_targets() -> list[str]:
     """Daftar label ``instance`` untuk target aktif dengan job Node Exporter."""
     data = _request("/api/v1/targets", {})
@@ -247,3 +272,34 @@ def build_network_tx_query(instance: str) -> str:
         "sum by (instance) (rate(node_network_transmit_bytes_total"
         f'{{{matcher},device!="lo"}}[5m]))'
     )
+
+
+# ---------------------------------------------------------------------------
+# Query builders (container trends — exporter backend)
+# ---------------------------------------------------------------------------
+
+_CONTAINER_CPU_METRIC = "infraforge_container_cpu_percent"
+_CONTAINER_MEMORY_METRIC = "infraforge_container_memory_bytes"
+
+
+def _container_matcher(name: str) -> str:
+    return f'name="{_escape_label_value(name)}"'
+
+
+def build_top_containers_cpu_query(limit: int, window: str = "5m") -> str:
+    """Top container berdasarkan rata-rata pemakaian CPU, hanya yang running."""
+    return (
+        f"topk({limit}, "
+        f"avg_over_time({_CONTAINER_CPU_METRIC}{{name!=\"\"}}[{window}])"
+        f' and on(name) (infraforge_container_up{{name!=""}} == 1))'
+    )
+
+
+def build_container_cpu_range_query(name: str) -> str:
+    """Time-series CPU satu container (untuk sparkline tren)."""
+    return f"{_CONTAINER_CPU_METRIC}{{{_container_matcher(name)}}}"
+
+
+def build_container_memory_query(name: str) -> str:
+    """Nilai RAM instan satu container."""
+    return f"{_CONTAINER_MEMORY_METRIC}{{{_container_matcher(name)}}}"

@@ -4,12 +4,14 @@ import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
+import { fetchTopContainers } from "@/api/metrics";
 import { fetchServerMetrics, fetchServers } from "@/api/servers";
 import {
   MetricChart,
   type ChartPoint,
   type ChartSeriesConfig,
 } from "@/components/monitoring/metric-chart";
+import { TopContainers } from "@/components/monitoring/top-containers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -106,6 +108,13 @@ export function MonitoringPage() {
     retry: 1,
   });
 
+  const trendsQuery = useQuery({
+    queryKey: ["container-trends", range],
+    queryFn: () => fetchTopContainers(range),
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+
   const metrics = metricsQuery.data;
 
   const cpuData = useMemo(
@@ -130,6 +139,12 @@ export function MonitoringPage() {
       ? metricsQuery.error.message
       : "Tidak dapat memuat metrik server."
     : null;
+  const trendsError = trendsQuery.error
+    ? trendsQuery.error instanceof ApiError
+      ? trendsQuery.error.message
+      : "Tidak dapat memuat tren container."
+    : null;
+  const isRefreshing = metricsQuery.isFetching || trendsQuery.isFetching;
 
   function updateParam(key: string, value: string) {
     setSearchParams(
@@ -151,7 +166,8 @@ export function MonitoringPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Monitoring</h1>
           <p className="text-sm text-muted-foreground">
-            Grafik CPU, memori, disk, dan jaringan dari Prometheus (node-exporter).
+            Grafik CPU, memori, disk, dan jaringan node-exporter, serta tren container dari
+            exporter backend (Prometheus).
           </p>
         </div>
         <Badge
@@ -201,10 +217,13 @@ export function MonitoringPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void metricsQuery.refetch()}
-            disabled={metricsQuery.isFetching || selectedId === null}
+            onClick={() => {
+              void metricsQuery.refetch();
+              void trendsQuery.refetch();
+            }}
+            disabled={isRefreshing || selectedId === null}
           >
-            <RefreshCw className={cn("size-3.5", metricsQuery.isFetching && "animate-spin")} />
+            <RefreshCw className={cn("size-3.5", isRefreshing && "animate-spin")} />
             Muat ulang
           </Button>
 
@@ -316,6 +335,12 @@ export function MonitoringPage() {
           />
         </div>
       )}
+
+      <TopContainers
+        data={trendsQuery.data}
+        loading={trendsQuery.isPending}
+        error={trendsError}
+      />
 
       {metrics ? (
         <Card size="sm">
