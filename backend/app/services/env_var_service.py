@@ -9,18 +9,20 @@ Bertanggung jawab atas:
 """
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from app.models.env_var import EnvVar
-from app.repositories import env_var_repository
+from app.repositories import deployment_repository, env_var_repository
 from app.schemas.env_var import (
     BulkUpsertResult,
     EnvVarBulkCreate,
+    EnvVarListResponse,
     EnvVarMaskedResponse,
     EnvVarResponse,
 )
-from app.services import encryption_service
+from app.services import application_service, encryption_service
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +59,28 @@ def _to_response(env_var: EnvVar) -> EnvVarResponse:
         created_at=env_var.created_at,
         updated_at=env_var.updated_at,
     )
+
+
+def _last_deployment_at(db: Session, project_id: int) -> datetime | None:
+    """Waktu deployment terakhir untuk seluruh aplikasi di project ini."""
+    applications = application_service.list_applications_by_project(db, project_id)
+    application_ids = [app.id for app in applications]
+    last = deployment_repository.get_last_started_at(db, application_ids)
+    if last is not None and last.tzinfo is None:
+        last = last.replace(tzinfo=UTC)
+    return last
+
+
+def _is_pending_redeploy(
+    env_var: EnvVar, last_deployment_at: datetime | None
+) -> bool:
+    """True bila env var diubah setelah deployment terakhir (belum terpasang)."""
+    if last_deployment_at is None:
+        return False
+    updated_at = env_var.updated_at
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=UTC)
+    return updated_at > last_deployment_at
 
 
 def _to_masked_response(env_var: EnvVar) -> EnvVarMaskedResponse:
@@ -133,6 +157,56 @@ def list_env_vars_masked(db: Session, project_id: int) -> list[EnvVarMaskedRespo
     """
     env_vars = env_var_repository.list_by_project(db, project_id)
     return [_to_masked_response(ev) for ev in env_vars]
+
+
+def list_env_vars_with_status(db: Session, project_id: int) -> EnvVarListResponse:
+    """
+    Daftar env var (masked) + status re-deploy per variabel.
+
+    Env var yang diubah setelah deployment terakhir ditandai
+    ``pending_redeploy=True`` karena container yang sedang berjalan belum
+    memakai nilai barunya.
+    """
+    env_vars = env_var_repository.list_by_project(db, project_id)
+    last_deployment_at = _last_deployment_at(db, project_id)
+
+    items: list[EnvVarMaskedResponse] = []
+    for env_var in env_vars:
+        masked = _to_masked_response(env_var)
+        items.append(
+            masked.model_copy(
+                update={
+                    "pending_redeploy": _is_pending_redeploy(env_var, last_deployment_at)
+                }
+            )
+        )
+
+    return EnvVarListResponse(env_vars=items, last_deployment_at=last_deployment_at)
+
+
+def update_env_var(
+    db: Session, project_id: int, env_var_id: int, plaintext_value: str
+) -> EnvVarMaskedResponse | None:
+    """
+    Ubah nilai satu env var (key tidak bisa diubah).
+
+    Value baru dienkripsi ulang sebelum disimpan.
+
+    Returns:
+        EnvVar ter-update (masked), atau None jika tidak ditemukan.
+    """
+    env_var = env_var_repository.get_by_project_and_id(db, project_id, env_var_id)
+    if env_var is None:
+        return None
+
+    encrypted = encryption_service.encrypt(plaintext_value)
+    updated = env_var_repository.update_value(db, env_var, encrypted)
+
+    last_deployment_at = _last_deployment_at(db, project_id)
+    masked = _to_masked_response(updated)
+    return masked.model_copy(
+        update={"pending_redeploy": _is_pending_redeploy(updated, last_deployment_at)}
+    )
 
 
 def get_env_var(db: Session, project_id: int, env_var_id: int) -> EnvVarResponse | None:

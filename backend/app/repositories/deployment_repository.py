@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.deployment import Deployment, DeploymentStatus
@@ -135,6 +136,28 @@ def count_by_application_ids(db: Session, application_ids: list[int]) -> int:
         .filter(Deployment.application_id.in_(application_ids))
         .count()
     )
+
+
+def get_last_started_at(
+    db: Session, application_ids: list[int]
+) -> datetime | None:
+    """
+    ``started_at`` deployment terakhir untuk sekumpulan aplikasi.
+
+    Dipakai untuk menentukan apakah env var project perlu re-deploy: env var
+    yang diubah setelah waktu ini belum ikut terpasang di container yang jalan.
+
+    Returns:
+        Timestamp deployment terakhir, atau None bila belum ada deployment.
+    """
+    if not application_ids:
+        return None
+    last = (
+        db.query(func.max(Deployment.started_at))
+        .filter(Deployment.application_id.in_(application_ids))
+        .scalar()
+    )
+    return last if isinstance(last, datetime) else None
 
 
 def get_last_successful(

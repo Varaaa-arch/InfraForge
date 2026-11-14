@@ -94,8 +94,23 @@ class EnvVarMaskedResponse(BaseModel):
     project_id: int
     key: str
     masked_value: str
+    pending_redeploy: bool = False
     created_at: datetime
     updated_at: datetime
+
+
+class EnvVarListResponse(BaseModel):
+    """
+    Response list env var beserta konteks deployment terakhir.
+
+    ``last_deployment_at`` adalah waktu deployment terakhir untuk seluruh
+    aplikasi di project tersebut. Env var yang diubah setelah waktu itu
+    ditandai ``pending_redeploy=true`` karena container yang sedang berjalan
+    belum memakai nilai barunya.
+    """
+
+    env_vars: list[EnvVarMaskedResponse]
+    last_deployment_at: datetime | None = None
 
 
 class BulkUpsertResult(BaseModel):

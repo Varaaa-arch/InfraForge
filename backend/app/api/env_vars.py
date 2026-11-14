@@ -6,8 +6,9 @@ URL secara eksplisit mencerminkan kepemilikan (env var adalah milik project).
 
 Endpoints:
   POST   /projects/{project_id}/env           → Bulk upsert env vars
-  GET    /projects/{project_id}/env           → List env vars (value masked)
+  GET    /projects/{project_id}/env           → List env vars (masked) + status re-deploy
   GET    /projects/{project_id}/env/{env_id}  → Detail env var (value plaintext)
+  PATCH  /projects/{project_id}/env/{env_id}  → Ubah nilai satu env var
   DELETE /projects/{project_id}/env/{env_id}  → Hapus satu env var
 
 Otorisasi:
@@ -25,8 +26,10 @@ from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.env_var import (
     EnvVarBulkCreate,
+    EnvVarListResponse,
     EnvVarMaskedResponse,
     EnvVarResponse,
+    EnvVarUpdate,
 )
 from app.schemas.response import ApiResponse
 from app.services import env_var_service, project_service
@@ -93,12 +96,15 @@ def bulk_upsert_env_vars(
 
 @router.get(
     "",
-    response_model=ApiResponse[list[EnvVarMaskedResponse]],
+    response_model=ApiResponse[EnvVarListResponse],
     summary="List environment variables (masked)",
     description=(
         "Menampilkan daftar seluruh environment variables milik project. "
         "Value disamarkan (hanya 3 karakter pertama yang terlihat + `****`) "
         "untuk mencegah paparan credential di tampilan list/dashboard. "
+        "Respons juga membawa `last_deployment_at` dan flag `pending_redeploy` "
+        "per variabel — `true` berarti variabel diubah setelah deployment "
+        "terakhir sehingga container yang jalan belum memakai nilai baru. "
         "Gunakan endpoint `GET /env/{id}` untuk melihat value lengkap."
     ),
 )
@@ -106,10 +112,47 @@ def list_env_vars(
     project_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> ApiResponse[list[EnvVarMaskedResponse]]:
+) -> ApiResponse[EnvVarListResponse]:
     _require_owned_project(project_id, current_user, db)
-    masked = env_var_service.list_env_vars_masked(db, project_id)
-    return ApiResponse(data=masked)
+    data = env_var_service.list_env_vars_with_status(db, project_id)
+    return ApiResponse(data=data)
+
+
+@router.patch(
+    "/{env_id}",
+    response_model=ApiResponse[EnvVarMaskedResponse],
+    summary="Ubah nilai environment variable",
+    description=(
+        "Memperbarui nilai satu environment variable milik project. "
+        "Key tidak dapat diubah (gunakan bulk upsert dengan key baru lalu hapus "
+        "key lama). Value baru dienkripsi ulang sebelum disimpan. "
+        "Respons mengembalikan nilai dalam bentuk masked."
+    ),
+    responses={
+        200: {"description": "Nilai berhasil diperbarui"},
+        404: {"description": "Environment variable tidak ditemukan"},
+        422: {"description": "Value kosong atau mengandung karakter terlarang"},
+    },
+)
+def update_env_var(
+    project_id: int,
+    env_id: int,
+    payload: EnvVarUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiResponse[EnvVarMaskedResponse]:
+    _require_owned_project(project_id, current_user, db)
+    env_var = env_var_service.update_env_var(db, project_id, env_id, payload.value)
+    if env_var is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Environment variable not found")
+    log_audit(
+        "UPDATE_ENV_VAR",
+        user=current_user.username,
+        project_id=project_id,
+        env_id=env_id,
+        key=env_var.key,
+    )
+    return ApiResponse(data=env_var)
 
 
 @router.get(
@@ -131,6 +174,13 @@ def get_env_var(
     env_var = env_var_service.get_env_var(db, project_id, env_id)
     if env_var is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Environment variable not found")
+    log_audit(
+        "REVEAL_ENV_VAR",
+        user=current_user.username,
+        project_id=project_id,
+        env_id=env_id,
+        key=env_var.key,
+    )
     return ApiResponse(data=env_var)
 
 

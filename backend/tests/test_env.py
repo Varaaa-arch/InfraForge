@@ -293,7 +293,7 @@ class TestEnvVarCRUD:
             )
 
         r = client.get(_env_url(pid), headers=_auth(tokens))
-        env_keys = [ev["key"] for ev in r.json()["data"]]
+        env_keys = [ev["key"] for ev in r.json()["data"]["env_vars"]]
         assert env_keys.count("UNIQUE_KEY") == 1
 
     def test_list_env_vars_returns_masked_values(self, client: TestClient) -> None:
@@ -309,13 +309,15 @@ class TestEnvVarCRUD:
 
         r = client.get(_env_url(pid), headers=_auth(tokens))
         assert r.status_code == 200
-        data = r.json()["data"]
-        assert len(data) == 1
-        item = data[0]
+        body = r.json()["data"]
+        assert len(body["env_vars"]) == 1
+        item = body["env_vars"][0]
         # Value harus disamarkan — tidak boleh menampilkan value asli
         assert "masked_value" in item
         assert "value" not in item
         assert item["masked_value"] == "abc****"
+        assert item["pending_redeploy"] is False
+        assert body["last_deployment_at"] is None
 
     def test_list_env_vars_sorted_alphabetically(self, client: TestClient) -> None:
         tokens = _register_and_login(client, _unique_user())
@@ -335,7 +337,7 @@ class TestEnvVarCRUD:
         )
 
         r = client.get(_env_url(pid), headers=_auth(tokens))
-        keys = [ev["key"] for ev in r.json()["data"]]
+        keys = [ev["key"] for ev in r.json()["data"]["env_vars"]]
         assert keys == sorted(keys)
 
     def test_get_env_var_detail_returns_plaintext(self, client: TestClient) -> None:
@@ -382,7 +384,7 @@ class TestEnvVarCRUD:
 
         # Setelah hapus, list harus kosong
         list_r = client.get(_env_url(pid), headers=_auth(tokens))
-        assert list_r.json()["data"] == []
+        assert list_r.json()["data"]["env_vars"] == []
 
     def test_delete_env_var_not_found(self, client: TestClient) -> None:
         tokens = _register_and_login(client, _unique_user())
@@ -405,7 +407,7 @@ class TestEnvVarCRUD:
         )
 
         r = client.get(_env_url(proj_b["id"]), headers=_auth(tokens))
-        keys = [ev["key"] for ev in r.json()["data"]]
+        keys = [ev["key"] for ev in r.json()["data"]["env_vars"]]
         assert "ONLY_IN_A" not in keys
 
     def test_invalid_key_format_returns_422(self, client: TestClient) -> None:
