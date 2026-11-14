@@ -24,11 +24,21 @@ const pageTitles: Record<string, string> = {
   "/projects": "Projects",
 };
 
+function resolveTitle(pathname: string): string {
+  if (pageTitles[pathname]) {
+    return pageTitles[pathname];
+  }
+  if (pathname.startsWith("/projects/")) {
+    return "Project";
+  }
+  return "InfraForge";
+}
+
 export function AppLayout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const title = pageTitles[location.pathname] ?? "InfraForge";
+  const title = resolveTitle(location.pathname);
 
   return (
     <div className="flex min-h-svh bg-background">
