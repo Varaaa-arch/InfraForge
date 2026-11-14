@@ -17,6 +17,7 @@
 - [Getting Started](#getting-started)
 - [Alerting](#alerting)
 - [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
+- [Manajemen Konfigurasi & Rahasia](#manajemen-konfigurasi-rahasia)
 - [Milestone 4 — Verifikasi Observability](#milestone-4--verifikasi-observability)
 - [Roadmap](#roadmap)
 - [Kenapa Namanya InfraForge?](#kenapa-namanya-infraforge)
@@ -102,6 +103,7 @@ flowchart TD
 | **Deployment** | Deploy aplikasi hanya dengan beberapa klik |
 | **Container Management** | Start, stop, restart, delete, view logs |
 | **Infrastructure UI** | Halaman Servers (CRUD + status exporter Prometheus) & Containers (health, port mapping, CPU/RAM, lifecycle, inspect) |
+| **Configuration & Secrets** | Environment variable per project terenkripsi (Fernet), secret masking, indikator re-deploy, bulk import `.env` |
 | **Monitoring** | CPU, RAM, Disk, Docker, Network, Uptime |
 | **Logging** | Lihat log seluruh container dari satu tempat |
 | **Alerting** | Rules Prometheus, riwayat alert, notifikasi Discord/Telegram |
@@ -217,8 +219,8 @@ InfraForge/
 ├── backend/          # FastAPI app (api, core, models, services, dst)
 ├── frontend/         # React app
 │   └── src/
-│       ├── pages/    # Overview, Monitoring, Logs, Alerts, Servers, Containers
-│       └── components/ # UI per fitur (servers, containers, monitoring, alerts, logs)
+│       ├── pages/    # Overview, Monitoring, Logs, Alerts, Servers, Containers, Projects
+│       └── components/ # UI per fitur (servers, containers, projects, monitoring, alerts, logs)
 ├── infrastructure/   # Config Traefik, Postgres, Redis, MinIO, Prometheus, Grafana, Loki, dst
 ├── cli/              # CLI berbasis Typer
 ├── docs/             # Dokumentasi tambahan
@@ -365,6 +367,36 @@ halaman baru di bawah section **Infrastructure** pada sidebar.
 
 ---
 
+## Manajemen Konfigurasi & Rahasia
+
+Milestone 5 Fase 2 menambahkan manajemen environment variable di bawah section
+**Delivery** pada sidebar, memanfaatkan enkripsi Fernet (`ENCRYPTION_KEY`) yang sudah
+terpasang di backend.
+
+**Halaman `/projects`** — daftar project dengan repository, branch, dan jumlah
+aplikasinya.
+
+**Halaman `/projects/:id`** — detail project bertab:
+
+- **Ringkasan** — informasi repository/branch/provider, plus daftar aplikasi
+  milik project (read-only).
+- **Environment Variables** — tabel env var dengan:
+  - **Secret masking** — nilai ditampilkan sebagai `sk-****`; tombol mata
+    menampilkan nilai sementara setelah konfirmasi, dan penampilannya tercatat
+    di audit log (`REVEAL_ENV_VAR`).
+  - **Indikator re-deploy** — variabel yang diubah setelah deployment terakhir
+    ditandai `Perlu re-deploy`, karena container yang sedang berjalan belum
+    memakai nilai barunya.
+  - **Tambah / ubah / hapus** variabel (nilai disimpan terenkripsi di database).
+  - **Bulk import `.env`** — tempel isi file `.env`, lihat preview (key, nilai
+    tersamar, status baru/update) dan alasan baris yang dilewati, lalu simpan
+    sekaligus.
+
+> Rincian kontrak API, keputusan desain, dan bukti pengujian ada di
+> [`docs/milestone-5-phase-2.md`](docs/milestone-5-phase-2.md).
+
+---
+
 ## Milestone 4 — Verifikasi Observability
 
 DoD Milestone 4 sudah diverifikasi end-to-end. Bukti lengkap (tabel waktu,
@@ -393,6 +425,7 @@ perintah reproduksi, dan hasil pengujian) ada di
 - [x] Monitoring stack (Prometheus, Node Exporter, cAdvisor)
 - [x] Alerting (Alertmanager, webhook relay, Discord/Telegram)
 - [x] UI manajemen server & container (Servers, Containers, lifecycle, inspect)
+- [x] UI manajemen project & environment variable (secrets manager, bulk import .env)
 - [ ] UI manajemen aplikasi dan deployment
 - [ ] Grafana dashboards & Traefik reverse proxy
 - [ ] Object storage MinIO untuk artefak deployment
