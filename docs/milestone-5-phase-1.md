@@ -150,9 +150,9 @@ Format error tetap `{"success": false, "message": "...", "code": <status>}`.
 | Paket | Isi | Status |
 |---|---|---|
 | 1.1 | Kontrak API, tipe TS, API client, komponen `dialog` + `confirm-dialog` | ✅ selesai |
-| 1.2 | Backend: daftar container kaya (ports, health, label compose, restart count) | ⏳ |
-| 1.3 | Backend: usage container dari Prometheus + `exporter_status` server | ⏳ |
-| 1.4 | Frontend: halaman `/servers` (tabel, form, tes SSH, hapus) | ⏳ |
+| 1.2 | Backend: daftar container kaya (ports, health, label compose, restart count) | ✅ selesai |
+| 1.3 | Backend: usage container dari Prometheus + `exporter_status` server | ✅ selesai |
+| 1.4 | Frontend: halaman `/servers` (tabel, form, tes SSH, hapus) | ✅ selesai |
 | 1.5 | Frontend: halaman `/containers` (tabel, lifecycle, inspect) | ⏳ |
 | 1.6 | Verifikasi menyeluruh, regresi Milestone 4, dokumentasi | ⏳ |
 

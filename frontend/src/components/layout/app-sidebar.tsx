@@ -1,4 +1,11 @@
-import { Activity, BellRing, Hammer, LayoutDashboard, ScrollText } from "lucide-react";
+import {
+  Activity,
+  BellRing,
+  Hammer,
+  LayoutDashboard,
+  ScrollText,
+  Server,
+} from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 import { cn } from "@/lib/utils";
@@ -22,6 +29,10 @@ const navSections: { label: string; items: NavItem[] }[] = [
       { title: "Logs", href: "/logs", icon: ScrollText },
       { title: "Alerts", href: "/alerts", icon: BellRing },
     ],
+  },
+  {
+    label: "Infrastructure",
+    items: [{ title: "Servers", href: "/servers", icon: Server }],
   },
 ];
 

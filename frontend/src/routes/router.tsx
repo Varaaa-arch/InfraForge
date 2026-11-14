@@ -52,6 +52,13 @@ export const router = createBrowserRouter([
               return { Component: AlertsPage };
             },
           },
+          {
+            path: "servers",
+            lazy: async () => {
+              const { ServersPage } = await import("@/pages/servers");
+              return { Component: ServersPage };
+            },
+          },
         ],
       },
     ],
