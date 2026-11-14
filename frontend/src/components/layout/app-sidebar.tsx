@@ -2,6 +2,7 @@ import {
   Activity,
   BellRing,
   Boxes,
+  FolderKanban,
   Hammer,
   LayoutDashboard,
   ScrollText,
@@ -37,6 +38,10 @@ const navSections: { label: string; items: NavItem[] }[] = [
       { title: "Servers", href: "/servers", icon: Server },
       { title: "Containers", href: "/containers", icon: Boxes },
     ],
+  },
+  {
+    label: "Delivery",
+    items: [{ title: "Projects", href: "/projects", icon: FolderKanban }],
   },
 ];
 

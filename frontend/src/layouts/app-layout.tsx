@@ -21,6 +21,7 @@ const pageTitles: Record<string, string> = {
   "/alerts": "Alerts",
   "/servers": "Servers",
   "/containers": "Containers",
+  "/projects": "Projects",
 };
 
 export function AppLayout() {

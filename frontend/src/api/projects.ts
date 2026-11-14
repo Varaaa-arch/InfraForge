@@ -22,6 +22,10 @@ export function fetchProjectApplications(projectId: number): Promise<Application
   return apiFetch<Application[]>(`/applications?${params.toString()}`);
 }
 
+export function fetchApplications(): Promise<Application[]> {
+  return apiFetch<Application[]>("/applications");
+}
+
 export function fetchEnvVars(projectId: number): Promise<EnvVarList> {
   return apiFetch<EnvVarList>(`/projects/${projectId}/env`);
 }

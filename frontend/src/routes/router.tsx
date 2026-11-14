@@ -66,6 +66,13 @@ export const router = createBrowserRouter([
               return { Component: ContainersPage };
             },
           },
+          {
+            path: "projects",
+            lazy: async () => {
+              const { ProjectsPage } = await import("@/pages/projects");
+              return { Component: ProjectsPage };
+            },
+          },
         ],
       },
     ],
