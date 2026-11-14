@@ -154,7 +154,84 @@ Format error tetap `{"success": false, "message": "...", "code": <status>}`.
 | 1.3 | Backend: usage container dari Prometheus + `exporter_status` server | ✅ selesai |
 | 1.4 | Frontend: halaman `/servers` (tabel, form, tes SSH, hapus) | ✅ selesai |
 | 1.5 | Frontend: halaman `/containers` (tabel, lifecycle, inspect) | ✅ selesai |
-| 1.6 | Verifikasi menyeluruh, regresi Milestone 4, dokumentasi | ⏳ |
+| 1.6 | Verifikasi menyeluruh, regresi Milestone 4, dokumentasi | ✅ selesai |
+
+## Perubahan API (ringkas)
+
+| Endpoint | Perubahan | Sifat |
+|---|---|---|
+| `GET /containers` | Tambah `ports`, `health`, `compose_project`, `compose_service`, `restart_count`, `cpu_percent`, `memory_usage_bytes`, `memory_limit_bytes`, `memory_percent` | Additive, field lama utuh |
+| `GET /servers` · `GET /servers/{id}` | Tambah `exporter_status` | Additive |
+| `GET /metrics` (exporter) | Tambah gauge `infraforge_container_memory_limit_bytes` | Additive |
+
+Endpoint lain (`POST/PATCH/DELETE /servers`, `POST /servers/{id}/test`,
+`POST /containers/{id}/{start,stop,restart}`, `GET /containers/{id}/inspect`)
+tidak berubah.
+
+## Pengujian
+
+### Backend
+
+```
+pytest            → 672 passed, 0 failed   (sebelum Fase 1: 644 passed)
+ruff check app tests → 10 temuan (baseline, tidak bertambah)
+mypy app             → 3 temuan (baseline, app/worker.py)
+```
+
+Test baru: `tests/test_container_usage_service.py` (4), tambahan di
+`tests/test_containers.py` (10), `tests/test_server.py` (7),
+`tests/test_prometheus_service.py` (5), `tests/test_metrics_exporter.py` (2).
+
+Fixture autouse baru di `tests/conftest.py` mengisolasi test dari Prometheus
+nyata (`list_node_exporter_up` → `{}`), sehingga hasil test tidak bergantung
+pada availability Prometheus di mesin developer.
+
+### Frontend
+
+```
+npm run build → sukses
+npm run lint  → 3 warning (baseline: fast-refresh & efek React)
+```
+
+### E2E (Playwright, Chrome headless)
+
+| Skrip | Cakupan | Hasil |
+|---|---|---|
+| `servers-e2e.cjs` | Buka `/servers`, badge exporter (Aktif/Belum diisi), form create (validasi + submit), edit (prefill), hapus (confirm dialog) | **15/15** |
+| `containers-e2e.cjs` | Buka `/containers`, ringkasan total/running, filter search + status, Inspect 4 tab (Ringkasan/Env/Mounts/Network), lifecycle stop → start → restart dengan notifikasi | **20/20** |
+| `milestone4-regression.cjs` | Regresi Milestone 4: kartu Overview, health server, 4 grafik + range 6h, panel Top container, tabel alert, halaman Logs, live tail WebSocket | **30/30** |
+
+Tidak ada `pageerror` pada seluruh skenario.
+
+> Lifecycle diuji pada container sekali pakai
+> (`alpine:3.20 sh -c "trap 'exit 0' TERM; sleep 600 & wait"`) agar stack
+> `infraforge` tidak terganggu. Container uji dihapus setelah pengujian.
+
+### Data nyata (Docker host)
+
+```
+GET /containers → 20 container: 16 running, 4 exited
+  infraforge-frontend  health=healthy   ports=[80/tcp→5173]  cpu=0.0%  ram=8MB
+  infraforge-backend   health=(null)    ports=[8000/tcp→8000] cpu=0.81% ram=119MB
+  tiket_postgres       health=healthy   ports=[5432/tcp→5434] compose=tiket-pesawat
+  mysql-nusantara      status=exited    compose=(null)  (container non-compose)
+
+GET /servers → Demo Server 1 exporter_status=up
+                Demo Server 2 exporter_status=not_configured
+```
+
+## Catatan operasional
+
+- **Stop container bisa memakan waktu 10 detik** bila aplikasi tidak menangani
+  SIGTERM (Docker mengirim SIGKILL setelah `timeout=10`). UI menampilkan spinner
+  selama operasi berjalan.
+- **CPU/RAM berasal dari Prometheus**, sehingga nilainya bisa tertinggal ≤15
+  detik dan `null` bila Prometheus sedang tidak dapat dihubungi.
+- **Nilai limit RAM** diambil dari gauge baru
+  `infraforge_container_memory_limit_bytes`; tanpa gauge ini, persentase RAM
+  tidak dapat dihitung.
+- **Hapus container sengaja tidak ada** di Fase 1 untuk mencegah container
+  penting (backend, postgres, frontend) terhapus dari UI.
 
 ## Di luar scope Fase 1
 

@@ -16,6 +16,7 @@
 - [Struktur Folder](#struktur-folder)
 - [Getting Started](#getting-started)
 - [Alerting](#alerting)
+- [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
 - [Milestone 4 — Verifikasi Observability](#milestone-4--verifikasi-observability)
 - [Roadmap](#roadmap)
 - [Kenapa Namanya InfraForge?](#kenapa-namanya-infraforge)
@@ -100,6 +101,7 @@ flowchart TD
 |---|---|
 | **Deployment** | Deploy aplikasi hanya dengan beberapa klik |
 | **Container Management** | Start, stop, restart, delete, view logs |
+| **Infrastructure UI** | Halaman Servers (CRUD + status exporter Prometheus) & Containers (health, port mapping, CPU/RAM, lifecycle, inspect) |
 | **Monitoring** | CPU, RAM, Disk, Docker, Network, Uptime |
 | **Logging** | Lihat log seluruh container dari satu tempat |
 | **Alerting** | Rules Prometheus, riwayat alert, notifikasi Discord/Telegram |
@@ -214,6 +216,9 @@ flowchart TD
 InfraForge/
 ├── backend/          # FastAPI app (api, core, models, services, dst)
 ├── frontend/         # React app
+│   └── src/
+│       ├── pages/    # Overview, Monitoring, Logs, Alerts, Servers, Containers
+│       └── components/ # UI per fitur (servers, containers, monitoring, alerts, logs)
 ├── infrastructure/   # Config Traefik, Postgres, Redis, MinIO, Prometheus, Grafana, Loki, dst
 ├── cli/              # CLI berbasis Typer
 ├── docs/             # Dokumentasi tambahan
@@ -330,6 +335,36 @@ mengelola channel notifikasi (tambah, aktif/nonaktif, test, hapus).
 
 ---
 
+## Manajemen Infrastruktur UI
+
+Milestone 5 Fase 1 menambahkan sisi operasional dari metrik Milestone 4: dua
+halaman baru di bawah section **Infrastructure** pada sidebar.
+
+**Halaman `/servers`** — daftar node/server dengan:
+
+- Status koneksi Prometheus per server: `Aktif` (target terdaftar & hidup),
+  `Down`, `Belum diisi` (`exporter_instance` kosong), `Tidak diketahui`
+  (exporter tidak terdaftar / Prometheus mati).
+- Form tambah & edit (nama, host/IP, port, username SSH, metode autentikasi,
+  password/private key, `exporter_instance`) dengan validasi client.
+- Aksi **Tes koneksi SSH** (memperbarui status server), **Hapus**, dan link
+  cepat ke grafik monitoring.
+
+**Halaman `/containers`** — daftar seluruh container aktif/berhenti dengan:
+
+- Status running/exited, healthcheck (`Healthy`/`Unhealthy`/`Starting`, atau
+  "Tanpa healthcheck"), image, port mapping (published vs exposed), jumlah
+  restart, serta pemakaian CPU & RAM sekilas dari exporter backend via
+  Prometheus.
+- Aksi **Start**, **Stop**, **Restart** (dengan dialog konfirmasi untuk
+  stop/restart) dan **Inspect** — modal 4 tab: Ringkasan (JSON `docker
+  inspect`), Env, Mounts, dan Network.
+
+> Rincian kontrak API, bukti pengujian, dan catatan keputusan ada di
+> [`docs/milestone-5-phase-1.md`](docs/milestone-5-phase-1.md).
+
+---
+
 ## Milestone 4 — Verifikasi Observability
 
 DoD Milestone 4 sudah diverifikasi end-to-end. Bukti lengkap (tabel waktu,
@@ -357,7 +392,8 @@ perintah reproduksi, dan hasil pengujian) ada di
 - [x] Centralized logging (Loki + Promtail + WebSocket tail)
 - [x] Monitoring stack (Prometheus, Node Exporter, cAdvisor)
 - [x] Alerting (Alertmanager, webhook relay, Discord/Telegram)
-- [ ] UI manajemen server, aplikasi, dan deployment
+- [x] UI manajemen server & container (Servers, Containers, lifecycle, inspect)
+- [ ] UI manajemen aplikasi dan deployment
 - [ ] Grafana dashboards & Traefik reverse proxy
 - [ ] Object storage MinIO untuk artefak deployment
 - [ ] Backup receiver Alertmanager (cadangan saat backend down)
