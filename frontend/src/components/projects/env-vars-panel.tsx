@@ -8,6 +8,7 @@ import {
   Pencil,
   Plus,
   TriangleAlert,
+  Upload,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -55,9 +56,10 @@ interface Notice {
 
 interface EnvVarsPanelProps {
   projectId: number;
+  onOpenBulkImport: () => void;
 }
 
-export function EnvVarsPanel({ projectId }: EnvVarsPanelProps) {
+export function EnvVarsPanel({ projectId, onOpenBulkImport }: EnvVarsPanelProps) {
   const queryClient = useQueryClient();
 
   const envQuery = useQuery({
@@ -200,6 +202,15 @@ export function EnvVarsPanel({ projectId }: EnvVarsPanelProps) {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onOpenBulkImport}
+                data-testid="env-bulk-import-button"
+              >
+                <Upload />
+                Bulk import .env
+              </Button>
               <Button
                 size="sm"
                 onClick={() => {

@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, FolderKanban, TriangleAlert } from "lucide-react";
+import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
 import { fetchProject } from "@/api/projects";
+import { EnvBulkImportDialog } from "@/components/projects/env-bulk-import-dialog";
 import { EnvVarsPanel } from "@/components/projects/env-vars-panel";
 import { ProjectSummary } from "@/components/projects/project-summary";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +20,7 @@ export function ProjectDetailPage() {
   const { id } = useParams();
   const projectId = Number(id);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const tab: ProjectTab = searchParams.get("tab") === "env" ? "env" : "summary";
 
@@ -154,8 +157,14 @@ export function ProjectDetailPage() {
       {tab === "summary" ? (
         <ProjectSummary project={project} />
       ) : (
-        <EnvVarsPanel projectId={project.id} />
+        <EnvVarsPanel projectId={project.id} onOpenBulkImport={() => setBulkOpen(true)} />
       )}
+
+      <EnvBulkImportDialog
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        projectId={project.id}
+      />
     </div>
   )
 }
