@@ -34,7 +34,7 @@ container_restart_count = Gauge(
 
 container_cpu_percent = Gauge(
     "infraforge_container_cpu_percent",
-    "Persentase pemakaian CPU container (Docker stats, per core).",
+    "Persentase pemakaian CPU container (Docker stats, per core). 0 bila tidak ada pemakaian terdeteksi.",
     ["name", "service", "compose_project", "image"],
     registry=REGISTRY,
 )
@@ -42,6 +42,13 @@ container_cpu_percent = Gauge(
 container_memory_bytes = Gauge(
     "infraforge_container_memory_bytes",
     "Pemakaian memori container dalam byte (cache-adjusted).",
+    ["name", "service", "compose_project", "image"],
+    registry=REGISTRY,
+)
+
+container_memory_limit_bytes = Gauge(
+    "infraforge_container_memory_limit_bytes",
+    "Limit memori container dalam byte.",
     ["name", "service", "compose_project", "image"],
     registry=REGISTRY,
 )
@@ -76,6 +83,7 @@ def collect() -> None:
     container_restart_count.clear()
     container_cpu_percent.clear()
     container_memory_bytes.clear()
+    container_memory_limit_bytes.clear()
     docker_available.set(0)
 
     try:
@@ -126,4 +134,9 @@ def collect() -> None:
         }
         if stats.cpu_percent is not None:
             container_cpu_percent.labels(**dimensions).set(stats.cpu_percent)
+        else:
+            # Docker stats melaporkan "—" hanya untuk sampel pertama; treat sebagai 0%
+            # agar deret metrik tetap lengkap dan bisa di-query.
+            container_cpu_percent.labels(**dimensions).set(0.0)
         container_memory_bytes.labels(**dimensions).set(stats.memory_usage_bytes)
+        container_memory_limit_bytes.labels(**dimensions).set(stats.memory_limit_bytes)

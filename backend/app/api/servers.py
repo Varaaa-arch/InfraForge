@@ -75,7 +75,15 @@ def list_servers(
     db: Session = Depends(get_db),
 ) -> ApiResponse[list[ServerResponse]]:
     servers = server_service.list_servers(db, current_user.id)
-    return ApiResponse(data=[ServerResponse.model_validate(s) for s in servers])
+    statuses = server_service.list_exporter_statuses(servers)
+    return ApiResponse(
+        data=[
+            ServerResponse.model_validate(s).model_copy(
+                update={"exporter_status": statuses.get(s.id)}
+            )
+            for s in servers
+        ]
+    )
 
 
 @router.get(
@@ -90,7 +98,12 @@ def get_server(
     db: Session = Depends(get_db),
 ) -> ApiResponse[ServerResponse]:
     server = _get_owned_server_or_404(db, server_id, current_user)
-    return ApiResponse(data=ServerResponse.model_validate(server))
+    status = server_service.list_exporter_statuses([server]).get(server.id)
+    return ApiResponse(
+        data=ServerResponse.model_validate(server).model_copy(
+            update={"exporter_status": status}
+        )
+    )
 
 
 @router.get(

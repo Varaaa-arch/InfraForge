@@ -14,6 +14,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from app.models.server import Server
+from app.services import server_service
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -423,3 +426,92 @@ class TestSSHServiceUnit:
 
         assert result.success is False
         assert "refused" in result.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# Status koneksi Prometheus (exporter_status)
+# ---------------------------------------------------------------------------
+
+class TestExporterStatus:
+    def _server(self, exporter_instance: str | None = None) -> Server:
+        return Server(id=1, name="demo", exporter_instance=exporter_instance)
+
+    def test_not_configured_without_exporter(self) -> None:
+        assert server_service.resolve_exporter_status(self._server(None), {}) == "not_configured"
+
+    def test_up_when_target_is_up(self) -> None:
+        status = server_service.resolve_exporter_status(
+            self._server("host:9100"), {"host:9100": 1.0}
+        )
+        assert status == "up"
+
+    def test_down_when_target_is_down(self) -> None:
+        status = server_service.resolve_exporter_status(
+            self._server("host:9100"), {"host:9100": 0.0}
+        )
+        assert status == "down"
+
+    def test_unknown_when_target_not_registered(self) -> None:
+        status = server_service.resolve_exporter_status(self._server("host:9100"), {})
+        assert status == "unknown"
+
+    def test_list_exporter_statuses_handles_prometheus_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _fail() -> dict[str, float]:
+            raise RuntimeError("Gagal menghubungi Prometheus: refused")
+
+        monkeypatch.setattr(
+            server_service.prometheus_service, "list_node_exporter_up", _fail
+        )
+
+        result = server_service.list_exporter_statuses([self._server("host:9100")])
+
+        assert result == {1: "unknown"}
+
+    def test_list_servers_api_includes_exporter_status(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            server_service.prometheus_service,
+            "list_node_exporter_up",
+            lambda: {"host.docker.internal:9100": 1.0},
+        )
+        tokens = _register_and_login(client, _unique_user())
+        client.post(
+            "/servers",
+            headers=_auth(tokens),
+            json=_server_payload(name="with-exporter", exporter_instance="host.docker.internal:9100"),
+        )
+        client.post(
+            "/servers",
+            headers=_auth(tokens),
+            json=_server_payload(name="without-exporter"),
+        )
+
+        response = client.get("/servers", headers=_auth(tokens))
+
+        assert response.status_code == 200
+        statuses = {s["name"]: s["exporter_status"] for s in response.json()["data"]}
+        assert statuses["with-exporter"] == "up"
+        assert statuses["without-exporter"] == "not_configured"
+
+    def test_get_server_detail_includes_exporter_status(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            server_service.prometheus_service,
+            "list_node_exporter_up",
+            lambda: {"host.docker.internal:9100": 0.0},
+        )
+        tokens = _register_and_login(client, _unique_user())
+        created = client.post(
+            "/servers",
+            headers=_auth(tokens),
+            json=_server_payload(exporter_instance="host.docker.internal:9100"),
+        ).json()["data"]
+
+        response = client.get(f"/servers/{created['id']}", headers=_auth(tokens))
+
+        assert response.status_code == 200
+        assert response.json()["data"]["exporter_status"] == "down"

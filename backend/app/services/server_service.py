@@ -7,10 +7,17 @@ Router API memanggil fungsi-fungsi di sini.
 
 from sqlalchemy.orm import Session
 
+from loguru import logger
+
 from app.models.server import Server, ServerStatus
 from app.repositories import server_repository
-from app.schemas.server import ServerCreate, ServerUpdate, SSHTestResult
-from app.services import ssh_service
+from app.schemas.server import (
+    ServerCreate,
+    ServerExporterStatus,
+    ServerUpdate,
+    SSHTestResult,
+)
+from app.services import prometheus_service, ssh_service
 
 
 def get_server(db: Session, server_id: int) -> Server | None:
@@ -26,6 +33,36 @@ def get_server_for_owner(db: Session, server_id: int, owner_id: int) -> Server |
 def list_servers(db: Session, owner_id: int) -> list[Server]:
     """Daftar semua server milik owner."""
     return server_repository.list_by_owner(db, owner_id)
+
+
+def resolve_exporter_status(server: Server, up_map: dict[str, float]) -> ServerExporterStatus:
+    """
+    Status koneksi Prometheus untuk satu server.
+
+    - ``not_configured`` — server belum mengisi ``exporter_instance``.
+    - ``up`` / ``down`` — target terdaftar di Prometheus.
+    - ``unknown`` — target tidak terdaftar atau Prometheus tidak dapat dihubungi.
+    """
+    if not server.exporter_instance:
+        return "not_configured"
+    value = up_map.get(server.exporter_instance)
+    if value is None:
+        return "unknown"
+    return "up" if value == 1 else "down"
+
+
+def list_exporter_statuses(servers: list[Server]) -> dict[int, ServerExporterStatus]:
+    """Status koneksi Prometheus untuk daftar server (id server → status)."""
+    try:
+        up_map = prometheus_service.list_node_exporter_up()
+    except RuntimeError as exc:
+        logger.warning(f"Status exporter: Prometheus tidak dapat dihubungi: {exc}")
+        up_map = {}
+
+    return {
+        server.id: resolve_exporter_status(server, up_map)
+        for server in servers
+    }
 
 
 def count_servers(db: Session, owner_id: int) -> int:

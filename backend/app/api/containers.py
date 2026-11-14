@@ -27,7 +27,7 @@ from app.schemas.metrics import (
     ContainerTrendsResponse,
 )
 from app.schemas.response import ApiResponse
-from app.services import container_service, container_trends_service
+from app.services import container_service, container_trends_service, container_usage_service
 
 router = APIRouter(prefix="/containers", tags=["containers"])
 
@@ -54,6 +54,10 @@ class ContainerResponse(BaseModel):
     compose_project: str | None = None
     compose_service: str | None = None
     restart_count: int = 0
+    cpu_percent: float | None = None
+    memory_usage_bytes: int | None = None
+    memory_limit_bytes: int | None = None
+    memory_percent: float | None = None
 
 
 class LogsResponse(BaseModel):
@@ -93,8 +97,12 @@ def list_containers(
 ) -> ApiResponse[list[ContainerResponse]]:
     try:
         containers = container_service.list_containers(all_containers=all)
-        return ApiResponse(
-            data=[
+        usage_by_name = container_usage_service.collect_usage()
+
+        items: list[ContainerResponse] = []
+        for c in containers:
+            usage = usage_by_name.get(c.name)
+            items.append(
                 ContainerResponse(
                     id=c.id,
                     name=c.name,
@@ -114,10 +122,13 @@ def list_containers(
                     compose_project=c.compose_project,
                     compose_service=c.compose_service,
                     restart_count=c.restart_count,
+                    cpu_percent=usage.cpu_percent if usage else None,
+                    memory_usage_bytes=usage.memory_usage_bytes if usage else None,
+                    memory_limit_bytes=usage.memory_limit_bytes if usage else None,
+                    memory_percent=usage.memory_percent if usage else None,
                 )
-                for c in containers
-            ]
-        )
+            )
+        return ApiResponse(data=items)
     except RuntimeError as exc:
         raise _handle_runtime(exc)
 

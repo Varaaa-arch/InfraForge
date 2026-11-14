@@ -63,3 +63,18 @@ def log_sink() -> Generator[list[str], None, None]:
     yield messages
     logger.remove(sink_id)
 
+
+@pytest.fixture(autouse=True)
+def _isolate_prometheus(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    """
+    Pisahkan test dari Prometheus nyata.
+
+    Secara default tidak ada target node-exporter yang dianggap hidup, sehingga
+    status exporter server menjadi ``unknown``/``not_configured`` dan test tidak
+    bergantung pada availability Prometheus di mesin developer.
+    """
+    from app.services import prometheus_service
+
+    monkeypatch.setattr(prometheus_service, "list_node_exporter_up", lambda: {})
+    yield
+

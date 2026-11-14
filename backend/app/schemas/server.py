@@ -1,8 +1,11 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.server import AuthType, ServerStatus
+
+ServerExporterStatus = Literal["not_configured", "up", "down", "unknown"]
 
 
 class ServerCreate(BaseModel):
@@ -63,6 +66,7 @@ class ServerResponse(BaseModel):
     status: ServerStatus
     created_at: datetime
     updated_at: datetime
+    exporter_status: ServerExporterStatus | None = None
 
 
 class SSHTestResult(BaseModel):

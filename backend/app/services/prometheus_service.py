@@ -280,6 +280,7 @@ def build_network_tx_query(instance: str) -> str:
 
 _CONTAINER_CPU_METRIC = "infraforge_container_cpu_percent"
 _CONTAINER_MEMORY_METRIC = "infraforge_container_memory_bytes"
+_CONTAINER_MEMORY_LIMIT_METRIC = "infraforge_container_memory_limit_bytes"
 
 
 def _container_matcher(name: str) -> str:
@@ -303,3 +304,35 @@ def build_container_cpu_range_query(name: str) -> str:
 def build_container_memory_query(name: str) -> str:
     """Nilai RAM instan satu container."""
     return f"{_CONTAINER_MEMORY_METRIC}{{{_container_matcher(name)}}}"
+
+
+def build_container_cpu_all_query() -> str:
+    """Nilai CPU instan seluruh container (dari exporter backend)."""
+    return f'{_CONTAINER_CPU_METRIC}{{name!=""}}'
+
+
+def build_container_memory_all_query() -> str:
+    """Nilai RAM instan seluruh container (dari exporter backend)."""
+    return f'{_CONTAINER_MEMORY_METRIC}{{name!=""}}'
+
+
+def build_container_memory_limit_all_query() -> str:
+    """Limit RAM seluruh container (dari exporter backend)."""
+    return f'{_CONTAINER_MEMORY_LIMIT_METRIC}{{name!=""}}'
+
+
+def list_node_exporter_up() -> dict[str, float]:
+    """
+    Status ``up`` tiap target node-exporter.
+
+    Returns:
+        Mapping ``instance → nilai up`` (1 = hidup, 0 = down).
+        Instance yang tidak terdaftar tidak muncul di mapping.
+    """
+    samples = query_instant_samples(f'up{{job="{_NODE_EXPORTER_JOB}"}}')
+    result: dict[str, float] = {}
+    for sample in samples:
+        instance = sample.labels.get("instance")
+        if instance:
+            result[instance] = sample.value
+    return result

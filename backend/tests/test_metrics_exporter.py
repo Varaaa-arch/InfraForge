@@ -132,6 +132,46 @@ def test_collect_handles_docker_unavailable(monkeypatch: pytest.MonkeyPatch) -> 
     assert _metric_lines("infraforge_container_cpu_percent") == []
 
 
+def test_collect_publishes_zero_cpu_when_no_usage_measured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeClient([FakeContainer("c1", "web")])
+    monkeypatch.setattr(container_service, "_get_client", lambda: client)
+
+    def _stats_without_cpu(container_id: str) -> container_service.ContainerStats:
+        stats = _stats(container_id)
+        stats.cpu_percent = None
+        return stats
+
+    monkeypatch.setattr(
+        container_service,
+        "get_stats",
+        lambda container_id, client=None: _stats_without_cpu(container_id),
+    )
+
+    metrics_service.collect()
+
+    cpu_lines = _metric_lines("infraforge_container_cpu_percent")
+    assert len(cpu_lines) == 1
+    assert cpu_lines[0].endswith(" 0.0")
+
+
+def test_collect_exports_memory_limit_gauge(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeClient([FakeContainer("c1", "web")])
+    monkeypatch.setattr(container_service, "_get_client", lambda: client)
+    monkeypatch.setattr(
+        container_service,
+        "get_stats",
+        lambda container_id, client=None: _stats(container_id),
+    )
+
+    metrics_service.collect()
+
+    limit_lines = _metric_lines("infraforge_container_memory_limit_bytes")
+    assert len(limit_lines) == 1
+    assert limit_lines[0].endswith(" 1.073741824e+09")
+
+
 def test_collect_tolerates_stats_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     client = FakeClient([FakeContainer("c1", "web")])
     monkeypatch.setattr(container_service, "_get_client", lambda: client)

@@ -267,3 +267,55 @@ class TestContainerQueryBuilders:
         query = prometheus_service.build_container_memory_query("infraforge-backend")
 
         assert query == 'infraforge_container_memory_bytes{name="infraforge-backend"}'
+
+
+class TestContainerUsageQueries:
+    def test_cpu_all_query_filters_empty_name(self) -> None:
+        query = prometheus_service.build_container_cpu_all_query()
+
+        assert query == 'infraforge_container_cpu_percent{name!=""}'
+
+    def test_memory_all_query_filters_empty_name(self) -> None:
+        query = prometheus_service.build_container_memory_all_query()
+
+        assert query == 'infraforge_container_memory_bytes{name!=""}'
+
+    def test_memory_limit_all_query_filters_empty_name(self) -> None:
+        query = prometheus_service.build_container_memory_limit_all_query()
+
+        assert query == 'infraforge_container_memory_limit_bytes{name!=""}'
+
+
+class TestListNodeExporterUp:
+    def test_maps_instance_to_up_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.undo()  # lepas isolasi Prometheus agar fungsi asli diuji
+        payload = _success(
+            {
+                "result": [
+                    {
+                        "metric": {"instance": "host.docker.internal:9100"},
+                        "value": [1700000000, "1"],
+                    },
+                    {
+                        "metric": {"instance": "host2:9100"},
+                        "value": [1700000000, "0"],
+                    },
+                ]
+            }
+        )
+        with patch(
+            "app.services.prometheus_service.httpx.get",
+            return_value=_response(payload),
+        ):
+            result = prometheus_service.list_node_exporter_up()
+
+        assert result == {"host.docker.internal:9100": 1.0, "host2:9100": 0.0}
+
+    def test_returns_empty_when_no_target(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.undo()  # lepas isolasi Prometheus agar fungsi asli diuji
+        payload = _success({"result": []})
+        with patch(
+            "app.services.prometheus_service.httpx.get",
+            return_value=_response(payload),
+        ):
+            assert prometheus_service.list_node_exporter_up() == {}
