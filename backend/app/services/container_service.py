@@ -11,7 +11,7 @@ Operasi yang didukung:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -41,12 +41,27 @@ def _get_client() -> Any:
 # ---------------------------------------------------------------------------
 
 @dataclass
+class ContainerPortInfo:
+    """Satu port mapping container (published ke host atau hanya exposed)."""
+
+    container_port: int
+    protocol: str
+    host_port: int | None
+    host_ip: str | None
+
+
+@dataclass
 class ContainerInfo:
     id: str          # 12-char short ID
     name: str
     image: str
     status: str      # running, exited, paused, etc.
     created: str
+    ports: list[ContainerPortInfo] = field(default_factory=list)
+    health: str | None = None            # healthy/unhealthy/starting, None bila tanpa healthcheck
+    compose_project: str | None = None
+    compose_service: str | None = None
+    restart_count: int = 0
 
 
 @dataclass
@@ -74,6 +89,93 @@ class ContainerStats:
 # Operations
 # ---------------------------------------------------------------------------
 
+def _safe_attrs(container: Any) -> dict[str, Any]:
+    """Ambil ``container.attrs`` sebagai dict (aman untuk stub/mocked object)."""
+    attrs = getattr(container, "attrs", None)
+    return attrs if isinstance(attrs, dict) else {}
+
+
+def _extract_ports(attrs: dict[str, Any]) -> list[ContainerPortInfo]:
+    """
+    Parse ``NetworkSettings.Ports`` menjadi daftar port mapping.
+
+    Port yang hanya di-expose (tanpa publish ke host) menghasilkan ``host_port=None``.
+    Binding ganda (0.0.0.0 + ::) digabung menjadi satu entri per
+    ``(container_port, protocol, host_port)``.
+    """
+    network_settings = attrs.get("NetworkSettings") or {}
+    raw_ports = network_settings.get("Ports") or {}
+
+    result: list[ContainerPortInfo] = []
+    seen: set[tuple[int, str, int | None]] = set()
+
+    for key, bindings in raw_ports.items():
+        port_part, _, protocol = str(key).partition("/")
+        try:
+            container_port = int(port_part)
+        except ValueError:
+            continue
+        protocol = protocol or "tcp"
+
+        if not bindings:
+            if (container_port, protocol, None) not in seen:
+                seen.add((container_port, protocol, None))
+                result.append(
+                    ContainerPortInfo(
+                        container_port=container_port,
+                        protocol=protocol,
+                        host_port=None,
+                        host_ip=None,
+                    )
+                )
+            continue
+
+        for binding in bindings:
+            if not isinstance(binding, dict):
+                continue
+            raw_host_port = binding.get("HostPort")
+            host_port: int | None = None
+            if raw_host_port is not None and str(raw_host_port).strip().isdigit():
+                host_port = int(str(raw_host_port).strip())
+            marker = (container_port, protocol, host_port)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            raw_host_ip = binding.get("HostIp")
+            result.append(
+                ContainerPortInfo(
+                    container_port=container_port,
+                    protocol=protocol,
+                    host_port=host_port,
+                    host_ip=str(raw_host_ip) if raw_host_ip else None,
+                )
+            )
+
+    return sorted(result, key=lambda port: (port.container_port, port.protocol))
+
+
+def _extract_health(attrs: dict[str, Any]) -> str | None:
+    """Status healthcheck container; ``None`` bila container tidak punya healthcheck."""
+    state = attrs.get("State") or {}
+    health = state.get("Health") or {}
+    status = health.get("Status")
+    return str(status) if status else None
+
+
+def _extract_compose_labels(attrs: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Ambil label compose project & service (None untuk container non-compose)."""
+    config = attrs.get("Config") or {}
+    labels = config.get("Labels") or {}
+    if not isinstance(labels, dict):
+        return None, None
+    project = labels.get("com.docker.compose.project")
+    service = labels.get("com.docker.compose.service")
+    return (
+        str(project) if project else None,
+        str(service) if service else None,
+    )
+
+
 def list_containers(all_containers: bool = True) -> list[ContainerInfo]:
     """
     Daftar semua container.
@@ -87,13 +189,20 @@ def list_containers(all_containers: bool = True) -> list[ContainerInfo]:
         containers = client.containers.list(all=all_containers)
         result: list[ContainerInfo] = []
         for c in containers:
+            attrs = _safe_attrs(c)
+            compose_project, compose_service = _extract_compose_labels(attrs)
             result.append(
                 ContainerInfo(
                     id=c.short_id,
                     name=c.name,
                     image=c.image.tags[0] if c.image.tags else c.image.short_id,
                     status=c.status,
-                    created=c.attrs.get("Created", ""),
+                    created=attrs.get("Created", ""),
+                    ports=_extract_ports(attrs),
+                    health=_extract_health(attrs),
+                    compose_project=compose_project,
+                    compose_service=compose_service,
+                    restart_count=int(attrs.get("RestartCount") or 0),
                 )
             )
         return result

@@ -14,7 +14,7 @@ Endpoints:
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_user
 from app.models.user import User
@@ -36,12 +36,24 @@ router = APIRouter(prefix="/containers", tags=["containers"])
 # Local schemas
 # ---------------------------------------------------------------------------
 
+class ContainerPortResponse(BaseModel):
+    container_port: int
+    protocol: str
+    host_port: int | None = None
+    host_ip: str | None = None
+
+
 class ContainerResponse(BaseModel):
     id: str
     name: str
     image: str
     status: str
     created: str
+    ports: list[ContainerPortResponse] = Field(default_factory=list)
+    health: str | None = None
+    compose_project: str | None = None
+    compose_service: str | None = None
+    restart_count: int = 0
 
 
 class LogsResponse(BaseModel):
@@ -89,6 +101,19 @@ def list_containers(
                     image=c.image,
                     status=c.status,
                     created=c.created,
+                    ports=[
+                        ContainerPortResponse(
+                            container_port=port.container_port,
+                            protocol=port.protocol,
+                            host_port=port.host_port,
+                            host_ip=port.host_ip,
+                        )
+                        for port in c.ports
+                    ],
+                    health=c.health,
+                    compose_project=c.compose_project,
+                    compose_service=c.compose_service,
+                    restart_count=c.restart_count,
                 )
                 for c in containers
             ]

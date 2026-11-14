@@ -20,6 +20,7 @@ def _make_container(
     status: str = "running",
     image_tags: list[str] | None = None,
     no_tags: bool = False,
+    attrs: dict | None = None,  # type: ignore[type-arg]
 ) -> MagicMock:
     c = MagicMock()
     c.short_id = short_id
@@ -29,7 +30,7 @@ def _make_container(
     img.tags = [] if no_tags else (image_tags if image_tags is not None else ["nginx:latest"])
     img.short_id = "imgshort"
     c.image = img
-    c.attrs = {"Created": "2024-01-01T00:00:00Z"}
+    c.attrs = attrs if attrs is not None else {"Created": "2024-01-01T00:00:00Z"}
     return c
 
 
@@ -203,6 +204,101 @@ class TestContainerServiceInspect:
 
 
 # ---------------------------------------------------------------------------
+# Enrichment list container (ports, health, label compose, restart count)
+# ---------------------------------------------------------------------------
+
+class TestContainerListEnrichment:
+    def _attrs(self) -> dict:
+        return {
+            "Created": "2026-11-13T13:44:02.123456789Z",
+            "RestartCount": 3,
+            "State": {"Status": "running", "Health": {"Status": "healthy"}},
+            "Config": {
+                "Labels": {
+                    "com.docker.compose.project": "infraforge",
+                    "com.docker.compose.service": "frontend",
+                }
+            },
+            "NetworkSettings": {
+                "Ports": {
+                    "80/tcp": [
+                        {"HostIp": "0.0.0.0", "HostPort": "5173"},
+                        {"HostIp": "::", "HostPort": "5173"},
+                    ],
+                    "6379/tcp": None,
+                }
+            },
+        }
+
+    def test_extracts_published_and_exposed_ports(self) -> None:
+        from app.services.container_service import _extract_ports
+
+        ports = _extract_ports(self._attrs())
+
+        assert [(p.container_port, p.protocol, p.host_port) for p in ports] == [
+            (80, "tcp", 5173),
+            (6379, "tcp", None),
+        ]
+
+    def test_dedupes_ipv4_and_ipv6_binding(self) -> None:
+        from app.services.container_service import _extract_ports
+
+        ports = _extract_ports(self._attrs())
+
+        published = [p for p in ports if p.container_port == 80]
+        assert len(published) == 1
+        assert published[0].host_ip == "0.0.0.0"
+
+    def test_extracts_health_status(self) -> None:
+        from app.services.container_service import _extract_health
+
+        assert _extract_health(self._attrs()) == "healthy"
+
+    def test_health_is_none_without_healthcheck(self) -> None:
+        from app.services.container_service import _extract_health
+
+        assert _extract_health({"State": {"Status": "running"}}) is None
+
+    def test_extracts_compose_labels(self) -> None:
+        from app.services.container_service import _extract_compose_labels
+
+        assert _extract_compose_labels(self._attrs()) == ("infraforge", "frontend")
+
+    def test_compose_labels_none_for_plain_container(self) -> None:
+        from app.services.container_service import _extract_compose_labels
+
+        assert _extract_compose_labels({"Config": {"Labels": {}}}) == (None, None)
+        assert _extract_compose_labels({}) == (None, None)
+
+    def test_list_containers_populates_enriched_fields(self) -> None:
+        from app.services.container_service import list_containers
+
+        c = _make_container(name="infraforge-frontend", attrs=self._attrs())
+        with patch("app.services.container_service._get_client", return_value=_mock_client([c])):
+            result = list_containers()
+
+        container = result[0]
+        assert container.health == "healthy"
+        assert container.compose_project == "infraforge"
+        assert container.compose_service == "frontend"
+        assert container.restart_count == 3
+        assert container.ports[0].host_port == 5173
+
+    def test_list_containers_tolerates_missing_attrs(self) -> None:
+        from app.services.container_service import list_containers
+
+        c = _make_container()
+        c.attrs = {"Created": "2024-01-01T00:00:00Z"}
+        with patch("app.services.container_service._get_client", return_value=_mock_client([c])):
+            result = list_containers()
+
+        assert result[0].ports == []
+        assert result[0].health is None
+        assert result[0].compose_project is None
+        assert result[0].restart_count == 0
+
+
+# ---------------------------------------------------------------------------
 # Container API endpoint tests
 # ---------------------------------------------------------------------------
 
@@ -232,6 +328,60 @@ class TestContainerEndpoints:
         c: TestClient = client  # type: ignore[assignment]
         r = c.get("/containers")
         assert r.status_code == 401
+
+    def test_list_containers_returns_enriched_fields(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers = self._login(c)
+        attrs = {
+            "Created": "2026-11-13T13:44:02.123456789Z",
+            "RestartCount": 2,
+            "State": {"Status": "running", "Health": {"Status": "healthy"}},
+            "Config": {
+                "Labels": {
+                    "com.docker.compose.project": "infraforge",
+                    "com.docker.compose.service": "frontend",
+                }
+            },
+            "NetworkSettings": {
+                "Ports": {"80/tcp": [{"HostIp": "0.0.0.0", "HostPort": "5173"}]}
+            },
+        }
+        mock_c = _mock_client([_make_container(attrs=attrs)])
+        with patch("app.services.container_service._get_client", return_value=mock_c):
+            r = c.get("/containers", headers=headers)
+
+        assert r.status_code == 200
+        item = r.json()["data"][0]
+        assert item["health"] == "healthy"
+        assert item["compose_project"] == "infraforge"
+        assert item["compose_service"] == "frontend"
+        assert item["restart_count"] == 2
+        assert item["ports"] == [
+            {
+                "container_port": 80,
+                "protocol": "tcp",
+                "host_port": 5173,
+                "host_ip": "0.0.0.0",
+            }
+        ]
+
+    def test_list_containers_keeps_legacy_fields(self, client: object) -> None:
+        from fastapi.testclient import TestClient
+        c: TestClient = client  # type: ignore[assignment]
+        headers = self._login(c)
+        mock_c = _mock_client([_make_container()])
+        with patch("app.services.container_service._get_client", return_value=mock_c):
+            r = c.get("/containers", headers=headers)
+
+        item = r.json()["data"][0]
+        assert item["id"] == "abc123def456"
+        assert item["name"] == "web_1"
+        assert item["image"] == "nginx:latest"
+        assert item["status"] == "running"
+        assert item["created"] == "2024-01-01T00:00:00Z"
+        assert item["ports"] == []
+        assert item["health"] is None
 
     def test_start_container_returns_200(self, client: object) -> None:
         from fastapi.testclient import TestClient
