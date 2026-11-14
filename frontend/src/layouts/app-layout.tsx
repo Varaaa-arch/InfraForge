@@ -20,6 +20,7 @@ const pageTitles: Record<string, string> = {
   "/logs": "Logs",
   "/alerts": "Alerts",
   "/servers": "Servers",
+  "/containers": "Containers",
 };
 
 export function AppLayout() {

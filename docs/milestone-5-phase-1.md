@@ -153,7 +153,7 @@ Format error tetap `{"success": false, "message": "...", "code": <status>}`.
 | 1.2 | Backend: daftar container kaya (ports, health, label compose, restart count) | ✅ selesai |
 | 1.3 | Backend: usage container dari Prometheus + `exporter_status` server | ✅ selesai |
 | 1.4 | Frontend: halaman `/servers` (tabel, form, tes SSH, hapus) | ✅ selesai |
-| 1.5 | Frontend: halaman `/containers` (tabel, lifecycle, inspect) | ⏳ |
+| 1.5 | Frontend: halaman `/containers` (tabel, lifecycle, inspect) | ✅ selesai |
 | 1.6 | Verifikasi menyeluruh, regresi Milestone 4, dokumentasi | ⏳ |
 
 ## Di luar scope Fase 1

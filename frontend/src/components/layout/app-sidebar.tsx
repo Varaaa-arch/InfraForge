@@ -1,6 +1,7 @@
 import {
   Activity,
   BellRing,
+  Boxes,
   Hammer,
   LayoutDashboard,
   ScrollText,
@@ -32,7 +33,10 @@ const navSections: { label: string; items: NavItem[] }[] = [
   },
   {
     label: "Infrastructure",
-    items: [{ title: "Servers", href: "/servers", icon: Server }],
+    items: [
+      { title: "Servers", href: "/servers", icon: Server },
+      { title: "Containers", href: "/containers", icon: Boxes },
+    ],
   },
 ];
 
