@@ -1,6 +1,8 @@
 export type AlertStatus = "firing" | "resolved";
 
-export type AlertChannelType = "discord" | "telegram";
+export type AlertChannelType = "discord" | "telegram" | "slack";
+
+export type AlertSeverity = "info" | "warning" | "critical";
 
 export interface AlertEvent {
   id: number;
@@ -25,6 +27,8 @@ export interface AlertChannel {
   has_discord_webhook: boolean;
   has_telegram_bot_token: boolean;
   telegram_chat_id: string | null;
+  has_slack_webhook: boolean;
+  min_severity: AlertSeverity;
   created_at: string;
   updated_at: string;
 }
@@ -35,6 +39,8 @@ export interface AlertChannelCreatePayload {
   discord_webhook_url?: string;
   telegram_bot_token?: string;
   telegram_chat_id?: string;
+  slack_webhook_url?: string;
+  min_severity?: AlertSeverity;
   enabled?: boolean;
 }
 
@@ -43,5 +49,7 @@ export interface AlertChannelUpdatePayload {
   discord_webhook_url?: string;
   telegram_bot_token?: string;
   telegram_chat_id?: string;
+  slack_webhook_url?: string;
+  min_severity?: AlertSeverity;
   enabled?: boolean;
 }

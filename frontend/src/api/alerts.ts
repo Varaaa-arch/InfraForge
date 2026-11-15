@@ -4,6 +4,7 @@ import type {
   AlertChannelCreatePayload,
   AlertChannelUpdatePayload,
   AlertEvent,
+  AlertSeverity,
   AlertStatus,
 } from "@/types/alert";
 
@@ -57,8 +58,12 @@ export function deleteAlertChannel(channelId: number): Promise<{ message: string
   });
 }
 
-export function testAlertChannel(channelId: number): Promise<{ message: string }> {
+export function testAlertChannel(
+  channelId: number,
+  severity?: AlertSeverity,
+): Promise<{ message: string }> {
   return apiFetch<{ message: string }>(`/alert-channels/${channelId}/test`, {
     method: "POST",
+    json: severity ? { severity } : undefined,
   });
 }

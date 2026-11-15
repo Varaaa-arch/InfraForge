@@ -1,12 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { BellRing, CheckCircle2, Webhook } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import { fetchAlertChannels, fetchAlerts } from "@/api/alerts";
-import { AlertChannels } from "@/components/alerts/alert-channels";
 import { AlertHistory } from "@/components/alerts/alert-history";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -71,7 +78,7 @@ export function AlertsPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Alerts</h1>
           <p className="text-sm text-muted-foreground">
-            Pantau alert dari Prometheus dan atur tujuan notifikasi Discord/Telegram.
+            Pantau alert dari Prometheus dan atur tujuan notifikasi Discord, Telegram, dan Slack.
           </p>
         </div>
         <Badge
@@ -148,7 +155,41 @@ export function AlertsPage() {
         </button>
       </div>
 
-      {tab === "history" ? <AlertHistory /> : <AlertChannels />}
+      {tab === "history" ? (
+        <AlertHistory />
+      ) : (
+        <Card size="sm" data-testid="channel-summary-panel">
+          <CardHeader>
+            <CardTitle className="text-sm">Alert destination</CardTitle>
+            <CardDescription>
+              {enabledChannels} dari {channels.length} channel aktif menerima notifikasi
+              sesuai threshold severity masing-masing.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              {(["discord", "telegram", "slack"] as const).map((type) => {
+                const count = channels.filter((channel) => channel.type === type).length;
+                const label =
+                  type === "discord" ? "Discord" : type === "telegram" ? "Telegram" : "Slack";
+                return (
+                  <Badge key={type} variant="outline">
+                    {label} {count}
+                  </Badge>
+                );
+              })}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Tambah, uji, ubah, atau hapus channel dari halaman Pengaturan tab
+              Notifikasi. Channel dengan threshold Critical hanya menerima alert critical,
+              sedangkan threshold Warning menerima warning dan critical.
+            </p>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/settings?tab=notifications">Kelola di Pengaturan</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
