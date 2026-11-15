@@ -49,6 +49,8 @@ from app.services import audit_service, auth_service
         ("POST", "/auth/logout", "AUTH_LOGOUT"),
         ("POST", "/auth/change-password", "PASSWORD_CHANGE"),
         ("PATCH", "/users/5", "UPDATE_USER"),
+        ("POST", "/api-tokens", "API_TOKEN_CREATE"),
+        ("DELETE", "/api-tokens/4", "API_TOKEN_REVOKE"),
         ("POST", "/webhooks/github", "WEBHOOK_GITHUB"),
     ],
 )

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from app.api import alerts, applications, audit_logs, auth, containers, dashboard, deployments, docker, env_vars, health, logs, metrics, projects, servers, users, webhooks
+from app.api import alerts, api_tokens, applications, audit_logs, auth, containers, dashboard, deployments, docker, env_vars, health, logs, metrics, projects, servers, users, webhooks
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -40,6 +40,13 @@ tags_metadata = [
             "Riwayat audit aksi sensitif: deploy, rollback, restart container, "
             "perubahan env var, kelola user/server, dan aksi lainnya. "
             "Admin melihat semua aktivitas; peran lain hanya miliknya."
+        ),
+    },
+    {
+        "name": "api-tokens",
+        "description": (
+            "Personal Access Token untuk CLI/CI-CD. Token plaintext hanya "
+            "ditampilkan sekali saat dibuat; database menyimpan hash SHA-256."
         ),
     },
     {
@@ -161,6 +168,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(audit_logs.router)
+app.include_router(api_tokens.router)
 app.include_router(projects.router)
 app.include_router(dashboard.router)
 app.include_router(servers.router)

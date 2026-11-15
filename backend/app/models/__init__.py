@@ -1,4 +1,5 @@
 from app.models.alert import AlertChannel, AlertChannelType, AlertEvent, AlertStatus
+from app.models.api_token import ApiToken
 from app.models.application import AppStatus, Application
 from app.models.audit_log import AuditLog
 from app.models.deployment import Deployment, DeploymentStatus
@@ -14,6 +15,7 @@ __all__ = [
     "AlertStatus",
     "AppStatus",
     "Application",
+    "ApiToken",
     "AuditLog",
     "AuthType",
     "Deployment",

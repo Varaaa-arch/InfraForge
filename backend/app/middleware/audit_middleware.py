@@ -53,6 +53,9 @@ AUDIT_RULES: tuple[AuditRule, ...] = (
     _rule("PATCH", r"/users/me", "UPDATE_PROFILE", "user"),
     _rule("DELETE", r"/users/me", "DEACTIVATE_ACCOUNT", "user"),
     _rule("PATCH", r"/users/(?P<id>\d+)", "UPDATE_USER", "user"),
+    # Personal access token
+    _rule("POST", r"/api-tokens", "API_TOKEN_CREATE", "api_token"),
+    _rule("DELETE", r"/api-tokens/(?P<id>\d+)", "API_TOKEN_REVOKE", "api_token"),
     # Project & repository
     _rule("POST", r"/projects", "PROJECT_CREATE", "project"),
     _rule("PATCH", r"/projects/(?P<id>\d+)", "PROJECT_UPDATE", "project"),

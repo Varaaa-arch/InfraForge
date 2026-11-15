@@ -87,6 +87,13 @@ export const router = createBrowserRouter([
               return { Component: AuditLogsPage };
             },
           },
+          {
+            path: "settings",
+            lazy: async () => {
+              const { SettingsPage } = await import("@/pages/settings");
+              return { Component: SettingsPage };
+            },
+          },
         ],
       },
     ],
