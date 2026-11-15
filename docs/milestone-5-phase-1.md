@@ -23,6 +23,11 @@ Melengkapi sisi operasional dari metrik Milestone 4:
 | Aksi hapus | Hanya **server**. Hapus container tidak ada di Fase 1 (risiko merusak stack) |
 | Dialog UI | Ditulis manual gaya shadcn-nova di atas paket `radix-ui` (tanpa dependensi baru) |
 
+Tes koneksi SSH memakai **paramiko** sebagai dependency runtime backend
+(`uv sync --no-dev` di image). Tanpa paket tersebut endpoint tes SSH gagal 500;
+ini diverifikasi ulang saat audit DoD Fase 1 dan dependency-nya ditambahkan ke
+`pyproject.toml`/`uv.lock`.
+
 ---
 
 ## Kontrak API
