@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core.roles import Role
 from app.core.security import hash_password
 from app.database.session import SessionLocal
 from app.models.alert import (
@@ -169,6 +170,7 @@ def _seed_user(db: Session) -> User:
         email=DEMO_EMAIL,
         password=hash_password(DEMO_PASSWORD),
         full_name=DEMO_FULL_NAME,
+        role=Role.DEVELOPER.value,
         is_active=True,
     )
     db.add(user)

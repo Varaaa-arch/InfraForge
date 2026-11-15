@@ -78,3 +78,18 @@ def _isolate_prometheus(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None
     monkeypatch.setattr(prometheus_service, "list_node_exporter_up", lambda: {})
     yield
 
+
+@pytest.fixture(autouse=True)
+def _default_test_role(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Default peran untuk test lama dibuat ``admin``.
+
+    Banyak test existing membuat user lewat ``/auth/register`` lalu langsung
+    melakukan mutasi (project, server, env var, container). Agar test tersebut
+    tetap fokus pada fiturnya (bukan RBAC), user baru dianggap admin selama
+    test. Test RBAC mengatur peran user secara eksplisit lewat helper.
+    """
+    from app.core import roles
+
+    monkeypatch.setattr(roles, "DEFAULT_ROLE", roles.Role.ADMIN.value)
+

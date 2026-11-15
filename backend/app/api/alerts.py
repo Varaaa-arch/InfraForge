@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.config import settings
 from app.core.audit import log_audit
+from app.core.permissions import require_permission
+from app.core.roles import Permission
 from app.database.session import get_db
 from app.models.alert import AlertStatus
 from app.models.user import User
@@ -128,7 +130,7 @@ def list_channels(
 )
 def create_channel(
     payload: AlertChannelCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.ALERT_CHANNEL_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[AlertChannelResponse]:
     channel = alert_channel_service.create_channel(db, payload)
@@ -149,7 +151,7 @@ def create_channel(
 def update_channel(
     channel_id: int,
     payload: AlertChannelUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.ALERT_CHANNEL_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[AlertChannelResponse]:
     channel = alert_channel_service.get_channel(db, channel_id)
@@ -174,7 +176,7 @@ def update_channel(
 )
 def delete_channel(
     channel_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.ALERT_CHANNEL_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[MessageResponse]:
     channel = alert_channel_service.get_channel(db, channel_id)
@@ -196,7 +198,7 @@ def delete_channel(
 )
 def test_channel(
     channel_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.ALERT_CHANNEL_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[MessageResponse]:
     channel = alert_channel_service.get_channel(db, channel_id)

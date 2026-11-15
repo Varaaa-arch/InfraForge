@@ -22,6 +22,8 @@ from pathlib import Path
 
 from app.api.deps import get_current_user
 from app.core.audit import log_audit
+from app.core.permissions import require_permission
+from app.core.roles import Permission
 from app.database.session import get_db
 from app.models.deployment import DeploymentStatus
 from app.models.user import User
@@ -68,7 +70,7 @@ def _get_owned_app_ids(current_user: User, db: Session) -> list[int]:
 )
 def trigger_deployment(
     payload: DeploymentCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.DEPLOY)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[DeploymentResponse]:
     owned_ids = _get_owned_app_ids(current_user, db)
@@ -215,7 +217,7 @@ def get_deployment(
 )
 def rollback_deployment(
     deployment_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.DEPLOY)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[DeploymentResponse]:
     # Verifikasi target deployment ada dan milik user
@@ -321,7 +323,7 @@ def get_deployment_logs(
 )
 def manual_health_check(
     deployment_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.DEPLOY)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[HealthCheckResponse]:
     deployment = deployment_service.get_deployment(db, deployment_id)

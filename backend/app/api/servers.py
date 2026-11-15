@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.audit import log_audit
+from app.core.permissions import require_permission
+from app.core.roles import Permission
 from app.database.session import get_db
 from app.models.server import Server
 from app.models.user import User
@@ -56,7 +58,7 @@ def _get_owned_server_or_404(db: Session, server_id: int, current_user: User) ->
 )
 def create_server(
     payload: ServerCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.SERVER_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[ServerResponse]:
     server = server_service.create_server(db, current_user.id, payload)
@@ -159,7 +161,7 @@ def get_server_metrics(
 def update_server(
     server_id: int,
     payload: ServerUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.SERVER_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[ServerResponse]:
     server = _get_owned_server_or_404(db, server_id, current_user)
@@ -176,7 +178,7 @@ def update_server(
 )
 def delete_server(
     server_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.SERVER_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[MessageResponse]:
     server = _get_owned_server_or_404(db, server_id, current_user)
@@ -199,7 +201,7 @@ def delete_server(
 )
 def test_server_connection(
     server_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.SERVER_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[SSHTestResult]:
     server = _get_owned_server_or_404(db, server_id, current_user)

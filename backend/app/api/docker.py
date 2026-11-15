@@ -11,6 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_user
+from app.core.permissions import require_permission
+from app.core.roles import Permission
 from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.response import ApiResponse
@@ -75,7 +77,7 @@ def list_images(
 )
 def pull_image(
     payload: PullRequest,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(Permission.IMAGE_WRITE)),
 ) -> ApiResponse[PullResponse]:
     try:
         result = docker_service.pull_image(payload.image, payload.tag)
@@ -103,7 +105,7 @@ def pull_image(
 def remove_image(
     image_id: str,
     force: bool = Query(default=False, description="Paksa hapus image"),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(Permission.IMAGE_WRITE)),
 ) -> ApiResponse[MessageResponse]:
     try:
         docker_service.remove_image(image_id, force=force)

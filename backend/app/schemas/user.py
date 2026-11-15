@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.core.roles import Role
+
 
 class UserCreate(BaseModel):
     username: str = Field(min_length=3, max_length=50)
@@ -15,6 +17,11 @@ class UserUpdate(BaseModel):
     full_name: str | None = Field(default=None, max_length=100)
 
 
+class AdminUserUpdate(BaseModel):
+    role: Role | None = None
+    is_active: bool | None = None
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -22,5 +29,6 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     full_name: str | None
+    role: Role
     is_active: bool
     created_at: datetime

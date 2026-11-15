@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.audit import log_audit
+from app.core.permissions import require_permission
+from app.core.roles import Permission
 from app.database.session import get_db
 from app.models.project import Project, Visibility
 from app.models.user import User
@@ -32,7 +34,7 @@ def _get_owned_project_or_404(db: Session, project_id: int, current_user: User) 
 @router.post("", response_model=ApiResponse[ProjectResponse], status_code=status.HTTP_201_CREATED)
 def create_project(
         payload: ProjectCreate,
-        current_user: User = Depends(get_current_user),
+        current_user: User = Depends(require_permission(Permission.PROJECT_WRITE)),
         db: Session = Depends(get_db),
 ) -> ApiResponse[ProjectResponse]:
     project = project_service.create_project(db, current_user.id, payload.name, payload.description, payload.visibility)
@@ -57,7 +59,7 @@ def get_project(
 def update_project(
     project_id: int,
     payload: ProjectUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.PROJECT_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[ProjectResponse]:
     project = _get_owned_project_or_404(db, project_id, current_user)
@@ -75,7 +77,7 @@ def update_project(
 def update_repository(
     project_id: int,
     payload: RepositoryUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.PROJECT_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[ProjectResponse]:
     project = _get_owned_project_or_404(db, project_id, current_user)
@@ -92,7 +94,7 @@ def update_repository(
 @router.delete("/{project_id}", response_model=ApiResponse[MessageResponse])
 def delete_project(
     project_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.PROJECT_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[MessageResponse]:
     project = _get_owned_project_or_404(db, project_id, current_user)

@@ -17,6 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_user
+from app.core.permissions import require_permission
+from app.core.roles import Permission
 from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.metrics import (
@@ -222,7 +224,7 @@ def get_container_metrics(
 )
 def start_container(
     container_id: str,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(Permission.CONTAINER_LIFECYCLE)),
 ) -> ApiResponse[MessageResponse]:
     try:
         container_service.start_container(container_id)
@@ -240,7 +242,7 @@ def start_container(
 def stop_container(
     container_id: str,
     timeout: int = Query(default=10, ge=1, description="Timeout stop dalam detik"),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(Permission.CONTAINER_LIFECYCLE)),
 ) -> ApiResponse[MessageResponse]:
     try:
         container_service.stop_container(container_id, timeout=timeout)
@@ -258,7 +260,7 @@ def stop_container(
 def restart_container(
     container_id: str,
     timeout: int = Query(default=10, ge=1, description="Timeout restart dalam detik"),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(Permission.CONTAINER_LIFECYCLE)),
 ) -> ApiResponse[MessageResponse]:
     try:
         container_service.restart_container(container_id, timeout=timeout)
@@ -279,7 +281,7 @@ def restart_container(
 def remove_container(
     container_id: str,
     force: bool = Query(default=False, description="Paksa hapus container yang running"),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(Permission.CONTAINER_DELETE)),
 ) -> ApiResponse[MessageResponse]:
     try:
         container_service.remove_container(container_id, force=force)

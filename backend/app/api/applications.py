@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.audit import log_audit
+from app.core.permissions import require_permission
+from app.core.roles import Permission
 from app.database.session import get_db
 from app.models.application import Application
 from app.models.user import User
@@ -87,7 +89,7 @@ def _get_owned_application_or_404(
 )
 def create_application(
     payload: ApplicationCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.APPLICATION_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[ApplicationResponse]:
     # Validasi project milik user yang login
@@ -166,7 +168,7 @@ def get_application(
 def update_application(
     application_id: int,
     payload: ApplicationUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.APPLICATION_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[ApplicationResponse]:
     app = _get_owned_application_or_404(application_id, current_user, db)
@@ -188,7 +190,7 @@ def update_application(
 )
 def delete_application(
     application_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.APPLICATION_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[MessageResponse]:
     app = _get_owned_application_or_404(application_id, current_user, db)

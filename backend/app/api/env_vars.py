@@ -21,6 +21,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.audit import log_audit
+from app.core.permissions import require_permission
+from app.core.roles import Permission
 from app.database.session import get_db
 from app.models.user import User
 from app.schemas.common import MessageResponse
@@ -75,7 +77,7 @@ def _require_owned_project(
 def bulk_upsert_env_vars(
     project_id: int,
     payload: EnvVarBulkCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.ENV_VAR_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[dict[str, object]]:
     _require_owned_project(project_id, current_user, db)
@@ -138,7 +140,7 @@ def update_env_var(
     project_id: int,
     env_id: int,
     payload: EnvVarUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.ENV_VAR_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[EnvVarMaskedResponse]:
     _require_owned_project(project_id, current_user, db)
@@ -167,7 +169,7 @@ def update_env_var(
 def get_env_var(
     project_id: int,
     env_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.ENV_VAR_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[EnvVarResponse]:
     _require_owned_project(project_id, current_user, db)
@@ -193,7 +195,7 @@ def get_env_var(
 def delete_env_var(
     project_id: int,
     env_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Permission.ENV_VAR_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[MessageResponse]:
     _require_owned_project(project_id, current_user, db)
