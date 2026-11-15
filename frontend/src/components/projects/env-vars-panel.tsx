@@ -42,6 +42,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
 import type { EnvVarMasked } from "@/types/project";
 
 const timeFormatter = new Intl.DateTimeFormat("id-ID", {
@@ -61,6 +62,7 @@ interface EnvVarsPanelProps {
 
 export function EnvVarsPanel({ projectId, onOpenBulkImport }: EnvVarsPanelProps) {
   const queryClient = useQueryClient();
+  const { canDeploy } = usePermissions();
 
   const envQuery = useQuery({
     queryKey: ["env-vars", projectId],
@@ -202,27 +204,35 @@ export function EnvVarsPanel({ projectId, onOpenBulkImport }: EnvVarsPanelProps)
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onOpenBulkImport}
-                data-testid="env-bulk-import-button"
-              >
-                <Upload />
-                Bulk import .env
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setEditing(null);
-                  setFormError(null);
-                  setCreating(true);
-                }}
-                data-testid="env-var-add-button"
-              >
-                <Plus />
-                Tambah variabel
-              </Button>
+              {canDeploy ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onOpenBulkImport}
+                    data-testid="env-bulk-import-button"
+                  >
+                    <Upload />
+                    Bulk import .env
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setEditing(null);
+                      setFormError(null);
+                      setCreating(true);
+                    }}
+                    data-testid="env-var-add-button"
+                  >
+                    <Plus />
+                    Tambah variabel
+                  </Button>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Hanya baca — hubungi developer untuk mengubah env var.
+                </p>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -303,72 +313,76 @@ export function EnvVarsPanel({ projectId, onOpenBulkImport }: EnvVarsPanelProps)
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {plain ? (
-                              <>
+                          {canDeploy ? (
+                            <div className="flex items-center justify-end gap-1">
+                              {plain ? (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    title="Salin nilai"
+                                    aria-label={`Salin ${envVar.key}`}
+                                    onClick={() => {
+                                      void navigator.clipboard?.writeText(plain);
+                                      setNotice({ tone: "success", text: `${envVar.key} disalin.` });
+                                    }}
+                                  >
+                                    <Copy />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    title="Sembunyikan nilai"
+                                    aria-label={`Sembunyikan ${envVar.key}`}
+                                    onClick={() => {
+                                      setRevealed((previous) => {
+                                        const next = { ...previous };
+                                        delete next[envVar.id];
+                                        return next;
+                                      });
+                                    }}
+                                  >
+                                    <EyeOff />
+                                  </Button>
+                                </>
+                              ) : (
                                 <Button
                                   variant="ghost"
                                   size="icon-sm"
-                                  title="Salin nilai"
-                                  aria-label={`Salin ${envVar.key}`}
-                                  onClick={() => {
-                                    void navigator.clipboard?.writeText(plain);
-                                    setNotice({ tone: "success", text: `${envVar.key} disalin.` });
-                                  }}
+                                  title="Tampilkan nilai"
+                                  aria-label={`Tampilkan ${envVar.key}`}
+                                  disabled={revealMutation.isPending}
+                                  onClick={() => setRevealTarget(envVar)}
                                 >
-                                  <Copy />
+                                  <Eye />
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  title="Sembunyikan nilai"
-                                  aria-label={`Sembunyikan ${envVar.key}`}
-                                  onClick={() => {
-                                    setRevealed((previous) => {
-                                      const next = { ...previous };
-                                      delete next[envVar.id];
-                                      return next;
-                                    });
-                                  }}
-                                >
-                                  <EyeOff />
-                                </Button>
-                              </>
-                            ) : (
+                              )}
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
-                                title="Tampilkan nilai"
-                                aria-label={`Tampilkan ${envVar.key}`}
-                                disabled={revealMutation.isPending}
-                                onClick={() => setRevealTarget(envVar)}
+                                title="Ubah nilai"
+                                aria-label={`Ubah ${envVar.key}`}
+                                onClick={() => {
+                                  setFormError(null);
+                                  setEditing(envVar);
+                                }}
                               >
-                                <Eye />
+                                <Pencil />
                               </Button>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              title="Ubah nilai"
-                              aria-label={`Ubah ${envVar.key}`}
-                              onClick={() => {
-                                setFormError(null);
-                                setEditing(envVar);
-                              }}
-                            >
-                              <Pencil />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="text-destructive"
-                              title="Hapus variabel"
-                              aria-label={`Hapus ${envVar.key}`}
-                              onClick={() => setDeleting(envVar)}
-                            >
-                              <X />
-                            </Button>
-                          </div>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="text-destructive"
+                                title="Hapus variabel"
+                                aria-label={`Hapus ${envVar.key}`}
+                                onClick={() => setDeleting(envVar)}
+                              >
+                                <X />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     );

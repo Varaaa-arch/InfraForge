@@ -1,7 +1,8 @@
-import { ChevronDown, LogOut, UserRound } from "lucide-react";
+import { ChevronDown, LogOut, Settings, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/hooks/use-permissions";
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -26,6 +28,7 @@ function initials(name: string): string {
 
 export function UserMenu() {
   const { user, logout } = useAuth();
+  const { label } = usePermissions();
   const navigate = useNavigate();
 
   if (!user) {
@@ -52,15 +55,26 @@ export function UserMenu() {
           <ChevronDown className="size-3.5 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="flex flex-col gap-0.5">
-          <span className="truncate text-sm font-medium">{displayName}</span>
-          <span className="truncate text-xs font-normal text-muted-foreground">{user.email}</span>
+      <DropdownMenuContent align="end" className="w-60">
+        <DropdownMenuLabel className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-sm font-medium">{displayName}</span>
+            <Badge variant="outline" data-testid="user-menu-role">
+              {label}
+            </Badge>
+          </div>
+          <span className="truncate text-xs font-normal text-muted-foreground">
+            {user.email}
+          </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled>
+        <DropdownMenuItem onSelect={() => navigate("/settings")}>
           <UserRound className="size-4" />
-          Profil
+          Profil & pengaturan
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate("/settings?tab=tokens")}>
+          <Settings className="size-4" />
+          API token
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onSelect={() => void handleLogout()}>

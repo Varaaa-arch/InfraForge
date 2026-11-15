@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ScrollText,
   Server,
+  Settings,
   ShieldCheck,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
@@ -46,7 +47,10 @@ const navSections: { label: string; items: NavItem[] }[] = [
   },
   {
     label: "Governance",
-    items: [{ title: "Audit Logs", href: "/audit-logs", icon: ShieldCheck }],
+    items: [
+      { title: "Audit Logs", href: "/audit-logs", icon: ShieldCheck },
+      { title: "Settings", href: "/settings", icon: Settings },
+    ],
   },
 ];
 

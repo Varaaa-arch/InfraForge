@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type {
@@ -228,6 +229,7 @@ function ChannelCard({
   toggling,
   testing,
   deleting,
+  canManage,
   onToggle,
   onTest,
   onDelete,
@@ -236,6 +238,7 @@ function ChannelCard({
   toggling: boolean;
   testing: boolean;
   deleting: boolean;
+  canManage: boolean;
   onToggle: (enabled: boolean) => void;
   onTest: () => void;
   onDelete: () => void;
@@ -258,12 +261,18 @@ function ChannelCard({
             </Badge>
           </CardDescription>
         </div>
-        <Switch
-          checked={channel.enabled}
-          disabled={toggling}
-          onCheckedChange={onToggle}
-          aria-label={`${channel.enabled ? "Nonaktifkan" : "Aktifkan"} channel ${channel.name}`}
-        />
+        {canManage ? (
+          <Switch
+            checked={channel.enabled}
+            disabled={toggling}
+            onCheckedChange={onToggle}
+            aria-label={`${channel.enabled ? "Nonaktifkan" : "Aktifkan"} channel ${channel.name}`}
+          />
+        ) : (
+          <Badge variant="outline">
+            {channel.enabled ? "Aktif" : "Nonaktif"}
+          </Badge>
+        )}
       </CardHeader>
 
       <CardContent className="space-y-3">
@@ -282,7 +291,8 @@ function ChannelCard({
           </span>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        {canManage ? (
+          <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={onTest} disabled={testing}>
             {testing ? (
               <Loader2 className="size-3.5 animate-spin" />
@@ -299,7 +309,8 @@ function ChannelCard({
             )}
             Hapus
           </Button>
-        </div>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -307,6 +318,7 @@ function ChannelCard({
 
 export function AlertChannels() {
   const queryClient = useQueryClient();
+  const { isAdmin } = usePermissions();
   const [showForm, setShowForm] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
@@ -374,21 +386,27 @@ export function AlertChannels() {
         <p className="text-sm text-muted-foreground">
           Channel aktif menerima notifikasi untuk alert firing dan resolved.
         </p>
-        <Button
-          size="sm"
-          variant={showForm ? "outline" : "default"}
-          className="ml-auto"
-          onClick={() => {
-            setShowForm((current) => !current);
-            setFeedback(null);
-          }}
-        >
-          {showForm ? <X className="size-3.5" /> : <Plus className="size-3.5" />}
-          {showForm ? "Tutup form" : "Tambah channel"}
-        </Button>
+        {isAdmin ? (
+          <Button
+            size="sm"
+            variant={showForm ? "outline" : "default"}
+            className="ml-auto"
+            onClick={() => {
+              setShowForm((current) => !current);
+              setFeedback(null);
+            }}
+          >
+            {showForm ? <X className="size-3.5" /> : <Plus className="size-3.5" />}
+            {showForm ? "Tutup form" : "Tambah channel"}
+          </Button>
+        ) : (
+          <p className="ml-auto text-xs text-muted-foreground">
+            Hanya admin yang dapat mengubah channel.
+          </p>
+        )}
       </div>
 
-      {showForm ? (
+      {showForm && isAdmin ? (
         <ChannelForm
           onCreated={(channel) => {
             setFeedback({ type: "success", message: `Channel ${channel.name} ditambahkan.` });
@@ -436,6 +454,7 @@ export function AlertChannels() {
               toggling={togglingId === channel.id}
               testing={testingId === channel.id}
               deleting={deletingId === channel.id}
+              canManage={isAdmin}
               onToggle={(enabled) => toggleMutation.mutate({ id: channel.id, enabled })}
               onTest={() => testMutation.mutate(channel.id)}
               onDelete={() => {

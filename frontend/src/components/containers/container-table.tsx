@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 import type { Container } from "@/types/container";
 
@@ -86,6 +87,7 @@ export function ContainerTable({
   onRestart,
   onInspect,
 }: ContainerTableProps) {
+  const { canDeploy } = usePermissions();
   const maxCpu = Math.max(1, ...containers.map((item) => item.cpu_percent ?? 0));
 
   return (
@@ -216,36 +218,40 @@ export function ContainerTable({
                     {busy ? (
                       <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
                     ) : null}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Start container"
-                      aria-label={`Start ${container.name}`}
-                      disabled={busy || isRunning}
-                      onClick={() => onStart(container)}
-                    >
-                      <Play />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Stop container"
-                      aria-label={`Stop ${container.name}`}
-                      disabled={busy || !isRunning}
-                      onClick={() => onStop(container)}
-                    >
-                      <Square />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Restart container"
-                      aria-label={`Restart ${container.name}`}
-                      disabled={busy || !isRunning}
-                      onClick={() => onRestart(container)}
-                    >
-                      <RotateCw />
-                    </Button>
+                    {canDeploy ? (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Start container"
+                          aria-label={`Start ${container.name}`}
+                          disabled={busy || isRunning}
+                          onClick={() => onStart(container)}
+                        >
+                          <Play />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Stop container"
+                          aria-label={`Stop ${container.name}`}
+                          disabled={busy || !isRunning}
+                          onClick={() => onStop(container)}
+                        >
+                          <Square />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Restart container"
+                          aria-label={`Restart ${container.name}`}
+                          disabled={busy || !isRunning}
+                          onClick={() => onRestart(container)}
+                        >
+                          <RotateCw />
+                        </Button>
+                      </>
+                    ) : null}
                     <Button
                       variant="ghost"
                       size="icon-sm"

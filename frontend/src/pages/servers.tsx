@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 import type { Server, ServerAuthType } from "@/types/server";
 
@@ -44,6 +45,7 @@ interface Notice {
 
 export function ServersPage() {
   const queryClient = useQueryClient();
+  const { canManageInfrastructure } = usePermissions();
 
   const [formOpen, setFormOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
@@ -155,10 +157,12 @@ export function ServersPage() {
             </span>
             Auto-refresh 30 detik
           </Badge>
-          <Button size="sm" onClick={openCreateDialog} data-testid="add-server-button">
-            <Plus />
-            Tambah server
-          </Button>
+          {canManageInfrastructure ? (
+            <Button size="sm" onClick={openCreateDialog} data-testid="add-server-button">
+              <Plus />
+              Tambah server
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -223,13 +227,16 @@ export function ServersPage() {
               <ServerOff className="size-6 text-muted-foreground" />
               <p className="text-sm font-medium">Belum ada server</p>
               <p className="max-w-md text-xs text-muted-foreground">
-                Tambahkan server agar metrik Prometheus dapat dipantau dan deployment dapat
-                diarahkan.
+                {canManageInfrastructure
+                  ? "Tambahkan server agar metrik Prometheus dapat dipantau dan deployment dapat diarahkan."
+                  : "Belum ada server yang terdaftar. Hubungi admin untuk menambahkan server."}
               </p>
-              <Button size="sm" onClick={openCreateDialog}>
-                <Plus />
-                Tambah server
-              </Button>
+              {canManageInfrastructure ? (
+                <Button size="sm" onClick={openCreateDialog}>
+                  <Plus />
+                  Tambah server
+                </Button>
+              ) : null}
             </div>
           ) : (
             <ServerTable

@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
 import type { Server, ServerExporterStatus, ServerStatus } from "@/types/server";
 
 const exporterStyles: Record<ServerExporterStatus, { label: string; className: string }> = {
@@ -63,6 +64,8 @@ export function ServerTable({
   onTest,
   onDelete,
 }: ServerTableProps) {
+  const { canManageInfrastructure } = usePermissions();
+
   return (
     <div className="overflow-x-auto">
       <Table data-testid="server-table">
@@ -122,35 +125,39 @@ export function ServerTable({
                         <Activity />
                       </Link>
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Tes koneksi SSH"
-                      aria-label={`Tes koneksi ${server.name}`}
-                      disabled={busy}
-                      onClick={() => onTest(server)}
-                    >
-                      <PlugZap />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      title="Ubah server"
-                      aria-label={`Ubah ${server.name}`}
-                      onClick={() => onEdit(server)}
-                    >
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-destructive"
-                      title="Hapus server"
-                      aria-label={`Hapus ${server.name}`}
-                      onClick={() => onDelete(server)}
-                    >
-                      <Trash2 />
-                    </Button>
+                    {canManageInfrastructure ? (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Tes koneksi SSH"
+                          aria-label={`Tes koneksi ${server.name}`}
+                          disabled={busy}
+                          onClick={() => onTest(server)}
+                        >
+                          <PlugZap />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Ubah server"
+                          aria-label={`Ubah ${server.name}`}
+                          onClick={() => onEdit(server)}
+                        >
+                          <Pencil />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-destructive"
+                          title="Hapus server"
+                          aria-label={`Hapus ${server.name}`}
+                          onClick={() => onDelete(server)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </>
+                    ) : null}
                   </div>
                 </TableCell>
               </TableRow>
