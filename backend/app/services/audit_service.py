@@ -9,6 +9,7 @@ utama.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from loguru import logger
@@ -86,3 +87,41 @@ def record(event: AuditEvent, *, db: Session | None = None) -> AuditLog | None:
         return None
     finally:
         session.close()
+
+
+def list_entries(
+    db: Session,
+    *,
+    user_id: int | None = None,
+    username: str | None = None,
+    action: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[AuditLog], int]:
+    """Ambil daftar audit log berfilter beserta total baris."""
+    items = audit_repository.list_entries(
+        db,
+        user_id=user_id,
+        username=username,
+        action=action,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+        offset=offset,
+    )
+    total = audit_repository.count_entries(
+        db,
+        user_id=user_id,
+        username=username,
+        action=action,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return items, total
+
+
+def get_filter_meta(db: Session) -> tuple[list[str], list[str]]:
+    """Daftar action & username yang tersedia untuk dropdown filter."""
+    return audit_repository.distinct_actions(db), audit_repository.distinct_usernames(db)

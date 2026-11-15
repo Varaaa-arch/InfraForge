@@ -80,6 +80,13 @@ export const router = createBrowserRouter([
               return { Component: ProjectDetailPage };
             },
           },
+          {
+            path: "audit-logs",
+            lazy: async () => {
+              const { AuditLogsPage } = await import("@/pages/audit-logs");
+              return { Component: AuditLogsPage };
+            },
+          },
         ],
       },
     ],

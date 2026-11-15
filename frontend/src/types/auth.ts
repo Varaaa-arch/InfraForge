@@ -15,8 +15,11 @@ export interface User {
   username: string;
   email: string;
   full_name: string | null;
+  role: UserRole;
   is_active: boolean;
   created_at: string;
 }
+
+export type UserRole = "admin" | "developer" | "viewer";
 
 export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
