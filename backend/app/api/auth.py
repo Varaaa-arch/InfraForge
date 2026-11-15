@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -29,26 +29,36 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     response_model=ApiResponse[UserResponse],
     status_code=status.HTTP_201_CREATED,
 )
-def register(payload: UserCreate, db: Session = Depends(get_db)) -> ApiResponse[UserResponse]:
+def register(
+    payload: UserCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> ApiResponse[UserResponse]:
     if auth_service.get_user_by_username(db, payload.username):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Username sudah dipakai")
     if auth_service.get_user_by_email(db, payload.email):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email sudah dipakai")
 
+    request.state.audit_username = payload.username
     user = auth_service.create_user(db, payload.username, payload.email, payload.password)
+    request.state.audit_user_id = user.id
     log_audit("REGISTER", user=user.username)
     return ApiResponse(data=UserResponse.model_validate(user))
 
 
 @router.post("/login", response_model=ApiResponse[Token])
 def login(
-    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
 ) -> ApiResponse[Token]:
+    request.state.audit_username = form_data.username
     user = auth_service.authenticate_user(db, form_data.username, form_data.password)
     if not user:
         log_audit("LOGIN_FAILED", user=form_data.username)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Username atau password salah")
 
+    request.state.audit_user_id = user.id
     log_audit("LOGIN", user=user.username)
     token = Token(
         access_token=create_access_token(str(user.id)),
@@ -80,7 +90,11 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> ApiRespon
 
 
 @router.post("/logout", response_model=ApiResponse[MessageResponse])
-def logout(payload: RefreshRequest, db: Session = Depends(get_db)) -> ApiResponse[MessageResponse]:
+def logout(
+    request: Request,
+    payload: RefreshRequest,
+    db: Session = Depends(get_db),
+) -> ApiResponse[MessageResponse]:
     token_data = decode_token(payload.refresh_token)
     if not token_data or token_data.get("type") != "refresh":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Refresh token tidak valid")
@@ -93,6 +107,7 @@ def logout(payload: RefreshRequest, db: Session = Depends(get_db)) -> ApiRespons
 
     user_id = token_data.get("sub")
     user = auth_service.get_user_by_id(db, int(user_id)) if user_id else None
+    request.state.audit_username = user.username if user else None
     log_audit("LOGOUT", user=user.username if user else "unknown")
 
     return ApiResponse(data=MessageResponse(message="Berhasil logout"))

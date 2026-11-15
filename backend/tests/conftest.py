@@ -93,3 +93,18 @@ def _default_test_role(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(roles, "DEFAULT_ROLE", roles.Role.ADMIN.value)
 
+
+@pytest.fixture(autouse=True)
+def _disable_audit_persistence(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Matikan penulisan audit_logs selama test.
+
+    Middleware audit membuka session database sendiri (di luar transaction
+    fixture), sehingga bila dibiarkan aktif setiap mutasi akan menulis baris
+    permanen ke database test. Test audit yang memang memverifikasi penulisan
+    mengaktifkan flag ini secara eksplisit.
+    """
+    from app.services import audit_service
+
+    monkeypatch.setattr(audit_service, "AUDIT_PERSIST_ENABLED", False)
+

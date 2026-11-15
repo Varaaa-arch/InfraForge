@@ -1,5 +1,6 @@
 from app.models.alert import AlertChannel, AlertChannelType, AlertEvent, AlertStatus
 from app.models.application import AppStatus, Application
+from app.models.audit_log import AuditLog
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.env_var import EnvVar
 from app.models.project import GitProvider, Project
@@ -13,6 +14,7 @@ __all__ = [
     "AlertStatus",
     "AppStatus",
     "Application",
+    "AuditLog",
     "AuthType",
     "Deployment",
     "DeploymentStatus",

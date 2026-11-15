@@ -11,6 +11,7 @@ from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
 from app.database.redis_client import check_redis_connection
 from app.database.session import check_database_connection
+from app.middleware.audit_middleware import AuditLogMiddleware
 from app.middleware.logging_middleware import RequestLoggingMiddleware
 from app.websocket.deployment_logs import router_ws
 from app.websocket.loki_logs import router_ws_logs
@@ -136,6 +137,7 @@ app = FastAPI(
 
 register_exception_handlers(app)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(AuditLogMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
