@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from app.models.alert import AlertChannel, AlertChannelType
 from app.repositories import alert_channel_repository
 from app.schemas.alert import (
     AlertChannelCreate,
+    AlertSeverityLiteral,
     AlertChannelResponse,
     AlertChannelUpdate,
     validate_channel_config,
@@ -38,6 +41,12 @@ def create_channel(db: Session, payload: AlertChannelCreate) -> AlertChannel:
             else None
         ),
         telegram_chat_id=payload.telegram_chat_id,
+        encrypted_slack_webhook_url=(
+            encryption_service.encrypt(payload.slack_webhook_url)
+            if payload.slack_webhook_url
+            else None
+        ),
+        min_severity=payload.min_severity,
         enabled=payload.enabled,
     )
 
@@ -51,6 +60,8 @@ def update_channel(
         channel.enabled = payload.enabled
     if payload.telegram_chat_id is not None:
         channel.telegram_chat_id = payload.telegram_chat_id
+    if payload.min_severity is not None:
+        channel.min_severity = payload.min_severity
     if payload.discord_webhook_url is not None:
         channel.encrypted_discord_webhook_url = encryption_service.encrypt(
             payload.discord_webhook_url
@@ -59,12 +70,17 @@ def update_channel(
         channel.encrypted_telegram_bot_token = encryption_service.encrypt(
             payload.telegram_bot_token
         )
+    if payload.slack_webhook_url is not None:
+        channel.encrypted_slack_webhook_url = encryption_service.encrypt(
+            payload.slack_webhook_url
+        )
 
     validate_channel_config(
         channel.channel_type,
         decrypt_discord_webhook_url(channel),
         decrypt_telegram_bot_token(channel),
         channel.telegram_chat_id,
+        decrypt_slack_webhook_url(channel),
     )
     return alert_channel_repository.save(db, channel)
 
@@ -85,6 +101,12 @@ def decrypt_telegram_bot_token(channel: AlertChannel) -> str | None:
     return encryption_service.decrypt(channel.encrypted_telegram_bot_token)
 
 
+def decrypt_slack_webhook_url(channel: AlertChannel) -> str | None:
+    if not channel.encrypted_slack_webhook_url:
+        return None
+    return encryption_service.decrypt(channel.encrypted_slack_webhook_url)
+
+
 def to_response(channel: AlertChannel) -> AlertChannelResponse:
     return AlertChannelResponse(
         id=channel.id,
@@ -94,6 +116,8 @@ def to_response(channel: AlertChannel) -> AlertChannelResponse:
         has_discord_webhook=bool(channel.encrypted_discord_webhook_url),
         has_telegram_bot_token=bool(channel.encrypted_telegram_bot_token),
         telegram_chat_id=channel.telegram_chat_id,
+        has_slack_webhook=bool(channel.encrypted_slack_webhook_url),
+        min_severity=cast(AlertSeverityLiteral, channel.min_severity),
         created_at=channel.created_at,
         updated_at=channel.updated_at,
     )

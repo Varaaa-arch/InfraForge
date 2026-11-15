@@ -15,11 +15,23 @@ from app.database.session import Base
 class AlertChannelType(str, enum.Enum):
     discord = "discord"
     telegram = "telegram"
+    slack = "slack"
 
 
 class AlertStatus(str, enum.Enum):
     firing = "firing"
     resolved = "resolved"
+
+
+SEVERITY_ORDER: tuple[str, ...] = ("info", "warning", "critical")
+SEVERITY_RANK: dict[str, int] = {
+    severity: rank for rank, severity in enumerate(SEVERITY_ORDER)
+}
+
+
+def severity_rank(severity: str | None) -> int:
+    """Peringkat severity; nilai tak dikenal diperlakukan sebagai ``info``."""
+    return SEVERITY_RANK.get((severity or "info").lower(), 0)
 
 
 class AlertChannel(Base):
@@ -43,6 +55,12 @@ class AlertChannel(Base):
         Text, nullable=True
     )
     telegram_chat_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    encrypted_slack_webhook_url: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    min_severity: Mapped[str] = mapped_column(
+        String(20), default="info", server_default="info", nullable=False
+    )
     enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true", nullable=False
     )

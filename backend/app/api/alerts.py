@@ -27,6 +27,7 @@ from app.models.user import User
 from app.schemas.alert import (
     AlertChannelCreate,
     AlertChannelResponse,
+    AlertChannelTestRequest,
     AlertChannelUpdate,
     AlertEventResponse,
     AlertIngestResponse,
@@ -47,7 +48,8 @@ channels_router = APIRouter(prefix="/alert-channels", tags=["alerts"])
     summary="Webhook Alertmanager",
     description=(
         "Menerima payload webhook dari Alertmanager, menyimpan riwayat alert, "
-        "dan mengirim notifikasi ke channel Discord/Telegram yang aktif."
+        "dan mengirim notifikasi ke channel Discord/Telegram/Slack yang aktif "
+        "sesuai threshold severity masing-masing."
     ),
 )
 def alertmanager_webhook(
@@ -198,20 +200,23 @@ def delete_channel(
 )
 def test_channel(
     channel_id: int,
+    payload: AlertChannelTestRequest | None = None,
     current_user: User = Depends(require_permission(Permission.ALERT_CHANNEL_WRITE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[MessageResponse]:
     channel = alert_channel_service.get_channel(db, channel_id)
     if channel is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Channel tidak ditemukan")
+    severity = payload.severity if payload else None
     try:
-        alert_service.send_test(channel)
+        alert_service.send_test(channel, severity=severity)
     except Exception as exc:
         logger.warning(f"Test channel {channel.name} gagal: {exc}")
+        reason = str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
-            "Gagal mengirim notifikasi uji. Periksa kembali konfigurasi channel.",
-        )
+            f"Gagal mengirim notifikasi uji: {reason[:300]}",
+        ) from exc
     log_audit(
         "TEST_ALERT_CHANNEL",
         user=current_user.username,

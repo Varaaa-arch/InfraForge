@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.alert import AlertChannelType, AlertStatus
 
+AlertSeverityLiteral = Literal["info", "warning", "critical"]
+
 
 class AlertmanagerAlert(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
@@ -61,6 +63,8 @@ class AlertChannelCreate(BaseModel):
     discord_webhook_url: str | None = None
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+    slack_webhook_url: str | None = None
+    min_severity: AlertSeverityLiteral = "info"
     enabled: bool = True
 
     @model_validator(mode="after")
@@ -70,6 +74,7 @@ class AlertChannelCreate(BaseModel):
             self.discord_webhook_url,
             self.telegram_bot_token,
             self.telegram_chat_id,
+            self.slack_webhook_url,
         )
         return self
 
@@ -79,6 +84,8 @@ class AlertChannelUpdate(BaseModel):
     discord_webhook_url: str | None = None
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+    slack_webhook_url: str | None = None
+    min_severity: AlertSeverityLiteral | None = None
     enabled: bool | None = None
 
 
@@ -90,8 +97,14 @@ class AlertChannelResponse(BaseModel):
     has_discord_webhook: bool
     has_telegram_bot_token: bool
     telegram_chat_id: str | None
+    has_slack_webhook: bool
+    min_severity: AlertSeverityLiteral
     created_at: datetime
     updated_at: datetime
+
+
+class AlertChannelTestRequest(BaseModel):
+    severity: AlertSeverityLiteral | None = None
 
 
 def _validate_channel_config(
@@ -99,6 +112,7 @@ def _validate_channel_config(
     discord_webhook_url: str | None,
     telegram_bot_token: str | None,
     telegram_chat_id: str | None,
+    slack_webhook_url: str | None,
 ) -> None:
     if channel_type == AlertChannelType.discord:
         if not discord_webhook_url or not discord_webhook_url.startswith(
@@ -106,6 +120,15 @@ def _validate_channel_config(
         ):
             raise ValueError(
                 "discord_webhook_url wajib diisi dan harus diawali http:// atau https://"
+            )
+        return
+
+    if channel_type == AlertChannelType.slack:
+        if not slack_webhook_url or not slack_webhook_url.startswith(
+            ("http://", "https://")
+        ):
+            raise ValueError(
+                "slack_webhook_url wajib diisi dan harus diawali http:// atau https://"
             )
         return
 

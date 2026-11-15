@@ -81,6 +81,7 @@ def _channel_payload(
     name: str = "Discord DevOps",
     channel_type: str = "discord",
     url: str = "https://discord.com/api/webhooks/123/token",
+    min_severity: str = "info",
 ) -> dict:
     if channel_type == "telegram":
         return {
@@ -88,12 +89,22 @@ def _channel_payload(
             "type": "telegram",
             "telegram_bot_token": "123456:bot-token",
             "telegram_chat_id": "-100123",
+            "min_severity": min_severity,
+            "enabled": True,
+        }
+    if channel_type == "slack":
+        return {
+            "name": name,
+            "type": "slack",
+            "slack_webhook_url": url,
+            "min_severity": min_severity,
             "enabled": True,
         }
     return {
         "name": name,
         "type": "discord",
         "discord_webhook_url": url,
+        "min_severity": min_severity,
         "enabled": True,
     }
 
@@ -151,6 +162,45 @@ class TestFormatting:
         assert "<script>" not in message
         assert "&lt;script&gt;" in message
         assert "&lt;b&gt;boom&lt;/b&gt;" in message
+
+    def test_slack_payload_firing(self) -> None:
+        event = alert_service.NotificationEvent(
+            alert_name="HighHostCPUUsage",
+            status="firing",
+            severity="critical",
+            summary="CPU tinggi",
+            description="CPU > 90%",
+            labels={"container": "infraforge-backend", "instance": "host"},
+            annotations={},
+            starts_at=datetime(2026, 11, 12, tzinfo=timezone.utc),
+            ends_at=None,
+        )
+        payload = alert_service.build_slack_payload(event)
+        attachment = payload["attachments"][0]
+        assert attachment["color"] == "#EF4444"
+        assert payload["text"] == "[FIRING] HighHostCPUUsage — critical"
+        blocks = attachment["blocks"]
+        assert blocks[0]["text"]["text"] == "[FIRING] HighHostCPUUsage"
+        rendered = str(payload)
+        assert "Severity" in rendered
+        assert "Container" in rendered
+        assert "CPU &gt; 90%" in rendered
+
+    def test_slack_payload_resolved_is_green(self) -> None:
+        event = alert_service.NotificationEvent(
+            alert_name="HighHostCPUUsage",
+            status="resolved",
+            severity="warning",
+            summary=None,
+            description=None,
+            labels={},
+            annotations={},
+            starts_at=datetime(2026, 11, 12, tzinfo=timezone.utc),
+            ends_at=datetime(2026, 11, 12, 1, tzinfo=timezone.utc),
+        )
+        payload = alert_service.build_slack_payload(event)
+        assert payload["attachments"][0]["color"] == "#22C55E"
+        assert payload["text"] == "[RESOLVED] HighHostCPUUsage — warning"
 
 
 class TestIngest:
@@ -286,6 +336,112 @@ class TestChannelService:
                 telegram_bot_token="token",
             )
 
+    def test_create_slack_encrypts_url(self, db_session: Session) -> None:
+        url = "https://hooks.slack.com/services/T000/B000/secret"
+        channel = alert_channel_service.create_channel(
+            db_session,
+            AlertChannelCreate(**_channel_payload(channel_type="slack", url=url)),
+        )
+        assert channel.channel_type == AlertChannelType.slack
+        assert channel.encrypted_slack_webhook_url != url
+        assert alert_channel_service.decrypt_slack_webhook_url(channel) == url
+        assert channel.min_severity == "info"
+
+        response = alert_channel_service.to_response(channel)
+        assert response.has_slack_webhook is True
+        assert response.has_discord_webhook is False
+        assert "hooks.slack.com" not in response.model_dump_json()
+
+    def test_slack_requires_webhook_url(self) -> None:
+        with pytest.raises(ValidationError):
+            AlertChannelCreate(name="x", type="slack")
+
+    def test_min_severity_is_stored_and_validated(self, db_session: Session) -> None:
+        channel = alert_channel_service.create_channel(
+            db_session,
+            AlertChannelCreate(
+                **_channel_payload(min_severity="warning"),
+            ),
+        )
+        assert channel.min_severity == "warning"
+
+        with pytest.raises(ValidationError):
+            AlertChannelCreate(**_channel_payload(min_severity="debug"))
+
+    def test_update_slack_url_and_min_severity(self, db_session: Session) -> None:
+        from app.schemas.alert import AlertChannelUpdate
+
+        channel = alert_channel_service.create_channel(
+            db_session,
+            AlertChannelCreate(**_channel_payload(channel_type="slack")),
+        )
+        new_url = "https://hooks.slack.com/services/T111/B222/new"
+        updated = alert_channel_service.update_channel(
+            db_session,
+            channel,
+            AlertChannelUpdate(slack_webhook_url=new_url, min_severity="critical"),
+        )
+        assert updated.min_severity == "critical"
+        assert alert_channel_service.decrypt_slack_webhook_url(updated) == new_url
+
+
+class TestSeverityRouting:
+    def _create(
+        self,
+        db: Session,
+        *,
+        name: str,
+        min_severity: str,
+        enabled: bool = True,
+    ) -> int:
+        channel = alert_channel_service.create_channel(
+            db,
+            AlertChannelCreate(
+                **_channel_payload(
+                    name=name,
+                    channel_type="slack",
+                    min_severity=min_severity,
+                ),
+            ),
+        )
+        if not enabled:
+            channel.enabled = False
+            db.commit()
+        return channel.id
+
+    def test_enabled_channels_filtered_by_severity(self, db_session: Session) -> None:
+        from app.repositories import alert_channel_repository
+
+        info_id = self._create(db_session, name="Info", min_severity="info")
+        warning_id = self._create(db_session, name="Warning", min_severity="warning")
+        critical_id = self._create(
+            db_session, name="Critical", min_severity="critical"
+        )
+        self._create(
+            db_session, name="Disabled", min_severity="info", enabled=False
+        )
+
+        def ids(severity: str | None) -> set[int]:
+            return {
+                channel.id
+                for channel in alert_channel_repository.list_enabled_for_severity(
+                    db_session, severity
+                )
+            }
+
+        assert ids("info") == {info_id}
+        assert ids("warning") == {info_id, warning_id}
+        assert ids("critical") == {info_id, warning_id, critical_id}
+        assert ids("unknown") == {info_id}
+        assert ids(None) == {info_id}
+
+    def test_unknown_severity_treated_as_info(self) -> None:
+        from app.models.alert import severity_rank
+
+        assert severity_rank("unknown") == severity_rank("info")
+        assert severity_rank(None) == 0
+        assert severity_rank("CRITICAL") == severity_rank("critical")
+
 
 class TestAlertsAPI:
     def test_list_requires_auth(self, client: TestClient) -> None:
@@ -380,6 +536,93 @@ class TestAlertsAPI:
             headers=_auth_header(tokens),
         )
         assert empty.json()["data"] == []
+
+    def test_create_slack_channel_with_min_severity(
+        self, client: TestClient
+    ) -> None:
+        tokens = _register_and_login(client, _unique_user())
+        created = client.post(
+            "/alert-channels",
+            headers=_auth_header(tokens),
+            json=_channel_payload(
+                channel_type="slack",
+                url="https://hooks.slack.com/services/T000/B000/secret",
+                min_severity="critical",
+            ),
+        )
+        assert created.status_code == 201
+        body = created.json()["data"]
+        assert body["type"] == "slack"
+        assert body["has_slack_webhook"] is True
+        assert body["min_severity"] == "critical"
+        assert "slack_webhook_url" not in body
+        assert "hooks.slack.com" not in created.text
+
+    def test_create_channel_rejects_invalid_severity(
+        self, client: TestClient
+    ) -> None:
+        tokens = _register_and_login(client, _unique_user())
+        response = client.post(
+            "/alert-channels",
+            headers=_auth_header(tokens),
+            json=_channel_payload(min_severity="debug"),
+        )
+        assert response.status_code == 422
+
+    def test_test_channel_uses_channel_threshold(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        tokens = _register_and_login(client, _unique_user())
+        created = client.post(
+            "/alert-channels",
+            headers=_auth_header(tokens),
+            json=_channel_payload(
+                channel_type="slack",
+                min_severity="warning",
+            ),
+        ).json()["data"]
+
+        sent: list[dict[str, object]] = []
+        monkeypatch.setattr(
+            alert_service,
+            "_send_slack",
+            lambda url, payload: sent.append(payload),
+        )
+        response = client.post(
+            f"/alert-channels/{created['id']}/test",
+            headers=_auth_header(tokens),
+        )
+        assert response.status_code == 200
+        assert sent
+        assert "*Severity:*\\nwarning" in str(sent[0])
+
+    def test_test_channel_severity_override(
+        self,
+        client: TestClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        tokens = _register_and_login(client, _unique_user())
+        created = client.post(
+            "/alert-channels",
+            headers=_auth_header(tokens),
+            json=_channel_payload(channel_type="slack"),
+        ).json()["data"]
+
+        sent: list[dict[str, object]] = []
+        monkeypatch.setattr(
+            alert_service,
+            "_send_slack",
+            lambda url, payload: sent.append(payload),
+        )
+        response = client.post(
+            f"/alert-channels/{created['id']}/test",
+            headers=_auth_header(tokens),
+            json={"severity": "critical"},
+        )
+        assert response.status_code == 200
+        assert "*Severity:*\\ncritical" in str(sent[0])
 
     def test_test_channel_failure_returns_502(
         self,

@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database.session import SessionLocal
-from app.models.alert import AlertChannel, AlertChannelType, AlertEvent, AlertStatus
+from app.models.alert import (
+    AlertChannel,
+    AlertChannelType,
+    AlertEvent,
+    AlertStatus,
+    SEVERITY_RANK,
+)
 from app.repositories import alert_channel_repository, alert_repository
 from app.schemas.alert import AlertmanagerAlert, AlertmanagerPayload
 from app.services import alert_channel_service
@@ -22,7 +28,13 @@ SEVERITY_COLORS = {
     "warning": 0xF59E0B,
     "info": 0x3B82F6,
 }
+SEVERITY_HEX_COLORS = {
+    "critical": "#EF4444",
+    "warning": "#F59E0B",
+    "info": "#3B82F6",
+}
 RESOLVED_COLOR = 0x22C55E
+RESOLVED_HEX_COLOR = "#22C55E"
 DISCORD_USERNAME = "InfraForge Alerts"
 
 
@@ -138,9 +150,11 @@ def dispatch_event_notifications(event_ids: list[int]) -> None:
             for event_id in event_ids
             if (event := alert_repository.get_by_id(db, event_id)) is not None
         ]
-        channels = alert_channel_repository.list_enabled(db)
         for event in events:
             notification = _notification_event(event)
+            channels = alert_channel_repository.list_enabled_for_severity(
+                db, event.severity
+            )
             for channel in channels:
                 try:
                     send_to_channel(channel, notification)
@@ -162,6 +176,13 @@ def send_to_channel(channel: AlertChannel, event: NotificationEvent) -> None:
         if not webhook_url:
             raise RuntimeError("Discord webhook URL belum dikonfigurasi")
         _send_discord(webhook_url, build_discord_payload(event))
+        return
+
+    if channel_type == AlertChannelType.slack:
+        webhook_url = alert_channel_service.decrypt_slack_webhook_url(channel)
+        if not webhook_url:
+            raise RuntimeError("Slack webhook URL belum dikonfigurasi")
+        _send_slack(webhook_url, build_slack_payload(event))
         return
 
     bot_token = alert_channel_service.decrypt_telegram_bot_token(channel)
@@ -220,6 +241,92 @@ def build_telegram_message(event: NotificationEvent) -> str:
     return "\n".join(lines)[:4000]
 
 
+def build_slack_payload(event: NotificationEvent) -> dict[str, object]:
+    def esc(value: str | None) -> str:
+        return html.escape(value or "-")
+
+    color = (
+        RESOLVED_HEX_COLOR
+        if event.status == AlertStatus.resolved.value
+        else SEVERITY_HEX_COLORS.get(event.severity.lower(), "#71717A")
+    )
+    blocks: list[dict[str, object]] = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"[{event.status.upper()}] {event.alert_name}"[:150],
+                "emoji": False,
+            },
+        },
+        {
+            "type": "section",
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Severity:*\n{esc(event.severity)}",
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": f"*Status:*\n{esc(event.status)}",
+                },
+            ],
+        },
+    ]
+
+    label_lines = [
+        f"*{key.capitalize()}:* {esc(value)}"
+        for key in ("container", "service", "instance", "job")
+        if (value := event.labels.get(key))
+    ]
+    if label_lines:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": "\n".join(label_lines)[:3000]},
+            }
+        )
+
+    description = event.description or event.summary
+    if description:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": esc(description)[:3000]},
+            }
+        )
+
+    blocks.append(
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": (
+                        "InfraForge · Alertmanager · "
+                        f"{esc(event.starts_at.isoformat())}"
+                    ),
+                }
+            ],
+        }
+    )
+
+    return {
+        "text": f"[{event.status.upper()}] {event.alert_name} — {event.severity}",
+        "attachments": [{"color": color, "blocks": blocks}],
+    }
+
+
+def _send_slack(webhook_url: str, payload: dict[str, object]) -> None:
+    response = httpx.post(
+        webhook_url,
+        json=payload,
+        timeout=settings.ALERT_REQUEST_TIMEOUT,
+    )
+    if response.status_code >= 400:
+        raise RuntimeError(f"Slack HTTP {response.status_code}: {response.text[:200]}")
+
+
 def _send_discord(webhook_url: str, payload: dict[str, object]) -> None:
     response = httpx.post(
         webhook_url,
@@ -249,11 +356,14 @@ def _send_telegram(bot_token: str, chat_id: str, text: str) -> None:
         )
 
 
-def send_test(channel: AlertChannel) -> None:
+def send_test(channel: AlertChannel, severity: str | None = None) -> None:
+    selected = (severity or channel.min_severity or "info").lower()
+    if selected not in SEVERITY_RANK:
+        selected = channel.min_severity
     event = NotificationEvent(
         alert_name="Test Notifikasi InfraForge",
         status=AlertStatus.firing.value,
-        severity="info",
+        severity=selected,
         summary="Channel berhasil terhubung ke InfraForge Alerting.",
         description=(
             "Ini adalah pesan uji dari dashboard InfraForge. "
