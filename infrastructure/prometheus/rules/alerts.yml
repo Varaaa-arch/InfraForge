@@ -11,6 +11,16 @@ groups:
           summary: 'CPU host {{ $labels.instance }} tinggi'
           description: 'Penggunaan CPU {{ printf "%.1f" $value }}% selama 5 menit terakhir.'
 
+      - alert: HighHostCPUUsageWarning
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 75
+        for: 5m
+        labels:
+          severity: warning
+          component: host
+        annotations:
+          summary: 'CPU host {{ $labels.instance }} cukup tinggi'
+          description: 'Penggunaan CPU {{ printf "%.1f" $value }}% selama 5 menit terakhir (ambang warning 75%).'
+
       - alert: HighHostMemoryUsage
         expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
         for: 5m
@@ -20,6 +30,16 @@ groups:
         annotations:
           summary: 'RAM host {{ $labels.instance }} tinggi'
           description: 'Penggunaan RAM {{ printf "%.1f" $value }}% selama 5 menit terakhir.'
+
+      - alert: HighHostMemoryUsageWarning
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 75
+        for: 5m
+        labels:
+          severity: warning
+          component: host
+        annotations:
+          summary: 'RAM host {{ $labels.instance }} cukup tinggi'
+          description: 'Penggunaan RAM {{ printf "%.1f" $value }}% selama 5 menit terakhir (ambang warning 75%).'
 
       - alert: HighDiskUsage
         expr: |
@@ -35,6 +55,21 @@ groups:
         annotations:
           summary: 'Disk {{ $labels.mountpoint }} pada {{ $labels.instance }} hampir penuh'
           description: 'Penggunaan disk {{ printf "%.1f" $value }}% (melebihi 90%).'
+
+      - alert: HighDiskUsageWarning
+        expr: |
+          (1 - (
+            node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs|ramfs|fuse.lxcfs"}
+            /
+            node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay|squashfs|ramfs|fuse.lxcfs"}
+          )) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: host
+        annotations:
+          summary: 'Disk {{ $labels.mountpoint }} pada {{ $labels.instance }} mulai penuh'
+          description: 'Penggunaan disk {{ printf "%.1f" $value }}% (ambang warning 80%).'
 
   - name: containers
     rules:

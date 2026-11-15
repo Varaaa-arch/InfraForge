@@ -28,6 +28,8 @@ services:
       - postgres
       - redis
       - prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     security_opt:
       - label=disable
     volumes:
