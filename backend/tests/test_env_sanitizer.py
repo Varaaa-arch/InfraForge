@@ -239,8 +239,8 @@ class TestWriteEnvFile:
             env_file = _write_env_file(Path(tmp), {"KEY": "value\nINJECTED=evil"})
             content = env_file.read_text(encoding="utf-8")
 
-        lines = [l for l in content.splitlines() if l.strip()]
-        keys = [l.split("=")[0] for l in lines if "=" in l]
+        lines = [line for line in content.splitlines() if line.strip()]
+        keys = [line.split("=")[0] for line in lines if "=" in line]
         assert "INJECTED" not in keys
 
     def test_null_byte_stripped(self) -> None:

@@ -20,8 +20,6 @@ import hmac
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.config import settings
 from app.services import webhook_service
 

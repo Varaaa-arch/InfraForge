@@ -23,7 +23,6 @@ Format .env yang dihasilkan mengikuti konvensi dotenv:
 from __future__ import annotations
 
 import re
-import string
 
 # Karakter yang DILARANG dalam value .env (input layer — trigger reject)
 # \n, \r, \x00 adalah yang paling berbahaya

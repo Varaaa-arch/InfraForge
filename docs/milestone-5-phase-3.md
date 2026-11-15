@@ -162,8 +162,8 @@ Sidebar **Governance** berisi Audit Logs dan Settings.
 
 ```
 pytest               → 774 passed, 0 failed
-ruff check           → 10 temuan (baseline, tidak bertambah)
-mypy app             → 3 temuan (baseline, app/worker.py)
+ruff check           → 0 temuan (bersih)
+mypy app             → 0 temuan (bersih)
 alembic heads        → 2abe02d9fbdc (satu head)
 alembic current      → 2abe02d9fbdc (host & Docker)
 ```
@@ -173,6 +173,10 @@ Pertumbuhan test: `683 → 696` (RBAC, +13) `→ 750` (audit middleware, +54)
 
 Migrasi `2abe02d9fbdc` diuji naik–turun di host
 (`downgrade -1 → upgrade head`) dan diterapkan di Docker.
+
+Temuan baseline ruff (10) dan mypy (3) dari fase sebelumnya dibersihkan pada
+audit DoD Fase 3: unused import/local, nama variabel ambigu, dan anotasi `dict`
+di `app/worker.py`.
 
 ### Frontend
 
@@ -188,7 +192,8 @@ npm run lint  → 3 warning (baseline: fast-refresh & efek React)
 | `audit-e2e.cjs` | Admin: semua aktivitas, filter aksi/user/tanggal, reset, dialog detail. Developer: scope sendiri, tanpa filter user | **17/17** |
 | `api-tokens-e2e.cjs` | Buat token read-only & penuh, dialog token sekali, validasi PAT via API, penolakan write, revoke & status | **19/19** |
 | `settings-e2e.cjs` | Tab settings, edit profil + user menu, validasi password, ubah peran pengguna, gating viewer di servers/env/container/channel | **33/33** |
-| `regression-e2e.cjs` | Semua halaman utama, sidebar, alur project/env var, reveal, audit `ENV_VAR_REVEAL`, tanpa page error | **26/26** |
+| `env-vars-dod-e2e.cjs` | Masking default, tambah/ubah/hapus, reveal–hide, badge & banner re-deploy, bulk import .env (komentar/`export`/kutip/duplikat/baris invalid), cleanup | **22/22** |
+| `regression-e2e.cjs` | Semua halaman utama, sidebar, 4 grafik metrik, Top container, tabel alert, live tail WebSocket, alur project/env var, reveal, audit `ENV_VAR_REVEAL`, tanpa page error | **30/30** |
 
 ### Smoke API (live Docker)
 
@@ -201,6 +206,15 @@ npm run lint  → 3 warning (baseline: fast-refresh & efek React)
 | demo | `GET /audit-logs` (22 baris) | semua milik `demo` |
 | PAT read-only | `GET /projects` → `200`; `POST /projects` → `403` "akses baca" | sesuai |
 | PAT setelah revoke | `GET /auth/me` | `401` |
+| viewer | `GET /servers`, `GET /audit-logs` (hanya milik sendiri) | `200` |
+| viewer | `POST /servers`, `POST /projects/6/env`, `POST /containers/x/stop`, `GET /users` | `403` |
+| viewer | `PATCH /users/me` email invalid → `422`; `POST /auth/change-password` password salah → `400` | validasi OK |
+| viewer | `POST /api-tokens` (token pribadi) | `201` lalu dicabut |
+
+Audit live (200 baris terakhir) memuat `CONTAINER_RESTART`,
+`ENV_VAR_BULK_UPSERT/UPDATE/DELETE`, `SERVER_CREATE/TEST_CONNECTION`,
+`UPDATE_USER`, `UPDATE_PROFILE`, `PASSWORD_CHANGE`, `API_TOKEN_CREATE/REVOKE`;
+`DEPLOY`/`ROLLBACK` diverifikasi lewat aturan middleware dan unit test.
 
 ## Catatan operasional
 

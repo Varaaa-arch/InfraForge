@@ -241,9 +241,6 @@ class TestRollbackEndpoint:
         app_id = _create_app(client, headers1, project_id)
 
         # Buat deployment success untuk user 1
-        from app.repositories import deployment_repository
-        from app.models.deployment import DeploymentStatus as DS
-
         # Mock rollback karena butuh deployment success yang ada di DB
         # Langsung hit endpoint dengan user 2
         headers2 = _register_and_login(client)

@@ -60,11 +60,11 @@ class WorkerSettings:
     # Maksimal retry per job sebelum dianggap gagal permanen
     max_tries = 5
 
-    async def on_startup(self, ctx: dict) -> None:
+    async def on_startup(self, ctx: dict[str, object]) -> None:
         logger.info("ARQ worker started.")
 
-    async def on_shutdown(self, ctx: dict) -> None:
+    async def on_shutdown(self, ctx: dict[str, object]) -> None:
         logger.info("ARQ worker shutting down.")
 
-    async def on_job_done(self, ctx: dict) -> None:
+    async def on_job_done(self, ctx: dict[str, object]) -> None:
         logger.info(f"ARQ job done: {ctx.get('job_id', 'unknown')}")

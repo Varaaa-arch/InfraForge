@@ -23,8 +23,6 @@ import hmac
 import uuid
 from unittest.mock import MagicMock, call, patch
 
-import pytest
-
 from app.config import settings
 from app.models.application import AppStatus
 from app.services import deployment_queue
@@ -106,7 +104,7 @@ class TestAcquireReleaseLock:
     def test_acquire_succeeds_when_no_lock(self) -> None:
         with patch("app.services.deployment_queue.redis_client") as mock_redis:
             mock_redis.set.return_value = True
-            result = deployment_queue.acquire_deploy_lock(app_id := 1, dep_id := 10)
+            result = deployment_queue.acquire_deploy_lock(1, 10)
             assert result is True
             mock_redis.set.assert_called_once_with(
                 "infraforge:deploy:lock:1",

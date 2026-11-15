@@ -183,6 +183,9 @@ ruff check app tests → 10 temuan (baseline, tidak bertambah)
 mypy app             → 3 temuan (baseline, app/worker.py)
 ```
 
+> Temuan baseline di atas dibersihkan saat audit DoD Fase 3; kondisi repo
+> saat ini: `ruff` 0 temuan dan `mypy` 0 error.
+
 Test baru: `tests/test_container_usage_service.py` (4), tambahan di
 `tests/test_containers.py` (10), `tests/test_server.py` (7),
 `tests/test_prometheus_service.py` (5), `tests/test_metrics_exporter.py` (2).
