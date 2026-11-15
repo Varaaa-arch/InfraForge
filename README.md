@@ -18,6 +18,7 @@
 - [Alerting](#alerting)
 - [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
 - [Manajemen Konfigurasi & Rahasia](#manajemen-konfigurasi-rahasia)
+- [Tata Kelola Platform](#tata-kelola-platform)
 - [Milestone 4 — Verifikasi Observability](#milestone-4--verifikasi-observability)
 - [Roadmap](#roadmap)
 - [Kenapa Namanya InfraForge?](#kenapa-namanya-infraforge)
@@ -397,6 +398,43 @@ aplikasinya.
 
 ---
 
+## Tata Kelola Platform
+
+Milestone 5 Fase 3 menambahkan lapisan tata kelola di bawah section
+**Governance** pada sidebar (Audit Logs & Settings).
+
+**Peran & izin (RBAC)** — tiga peran:
+
+- **Admin** — akses penuh: kelola user, server, channel notifikasi, dan seluruh
+  operasi infrastruktur.
+- **Developer** — deploy serta kelola project, env var, aplikasi, image, dan
+  lifecycle container.
+- **Viewer** — hanya baca (monitoring, log, audit miliknya). Registrasi baru
+  default viewer.
+
+UI menyesuaikan peran: tombol mutasi yang tidak diizinkan disembunyikan, dan
+backend tetap menolak (403) bila dipanggil langsung.
+
+**Audit log** — `/audit-logs` menampilkan riwayat aksi sensitif (deploy,
+rollback, restart container, perubahan env var, kelola user/server, reveal
+secret, pembuatan/pencabutan token) lewat middleware allowlist. Admin melihat
+semua aktivitas; pengguna lain hanya miliknya. Tersedia filter user, aksi, dan
+rentang waktu, plus dialog detail request. Body request tidak pernah disimpan.
+
+**API token (CLI/CI-CD)** — buat Personal Access Token dari tab API Token di
+`/settings`. Token berformat `if_<prefix>_<secret>` dan **hanya ditampilkan
+sekali**; database menyimpan hash SHA-256. Token mendukung scope baca saja atau
+baca–tulis, masa berlaku, pencatatan `last_used_at`, dan revoke.
+
+**Pengaturan** — `/settings` bertab: Profil, Keamanan (ganti password), API
+Token, Pengguna (admin: ubah peran/status), dan Notifikasi (tautan ke channel
+di `/alerts`). Menu pengguna menampilkan badge peran dan shortcut pengaturan.
+
+> Rincian kontrak API, matriks izin, dan bukti pengujian ada di
+> [`docs/milestone-5-phase-3.md`](docs/milestone-5-phase-3.md).
+
+---
+
 ## Milestone 4 — Verifikasi Observability
 
 DoD Milestone 4 sudah diverifikasi end-to-end. Bukti lengkap (tabel waktu,
@@ -426,6 +464,7 @@ perintah reproduksi, dan hasil pengujian) ada di
 - [x] Alerting (Alertmanager, webhook relay, Discord/Telegram)
 - [x] UI manajemen server & container (Servers, Containers, lifecycle, inspect)
 - [x] UI manajemen project & environment variable (secrets manager, bulk import .env)
+- [x] Tata kelola: RBAC (Admin/Developer/Viewer), audit log, personal access token, halaman pengaturan
 - [ ] UI manajemen aplikasi dan deployment
 - [ ] Grafana dashboards & Traefik reverse proxy
 - [ ] Object storage MinIO untuk artefak deployment
