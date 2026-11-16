@@ -1,4 +1,11 @@
-import { Loader2Icon, Play, RotateCw, ScanSearch, Square } from "lucide-react";
+import {
+  Loader2Icon,
+  Play,
+  RotateCw,
+  ScanSearch,
+  Settings2,
+  Square,
+} from "lucide-react";
 
 import { UsageBar } from "@/components/containers/usage-bar";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +84,7 @@ interface ContainerTableProps {
   onStop: (container: Container) => void;
   onRestart: (container: Container) => void;
   onInspect: (container: Container) => void;
+  onConfigure: (container: Container) => void;
 }
 
 export function ContainerTable({
@@ -86,6 +94,7 @@ export function ContainerTable({
   onStop,
   onRestart,
   onInspect,
+  onConfigure,
 }: ContainerTableProps) {
   const { canDeploy } = usePermissions();
   const maxCpu = Math.max(1, ...containers.map((item) => item.cpu_percent ?? 0));
@@ -220,6 +229,17 @@ export function ContainerTable({
                     ) : null}
                     {canDeploy ? (
                       <>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Atur resource & auto-healing"
+                          aria-label={`Atur resource ${container.name}`}
+                          disabled={busy}
+                          onClick={() => onConfigure(container)}
+                          data-testid="container-policy-open"
+                        >
+                          <Settings2 />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon-sm"

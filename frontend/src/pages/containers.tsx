@@ -3,6 +3,7 @@ import {
   Boxes,
   CircleCheck,
   Filter,
+  HeartPulse,
   Play,
   RefreshCw,
   Search,
@@ -19,6 +20,8 @@ import {
   startContainer,
   stopContainer,
 } from "@/api/containers";
+import { AutoHealingPanel } from "@/components/containers/auto-healing-panel";
+import { ContainerPolicyDialog } from "@/components/containers/container-policy-dialog";
 import { ContainerTable } from "@/components/containers/container-table";
 import { InspectDialog } from "@/components/containers/inspect-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +50,13 @@ type StatusFilter = "all" | "running" | "stopped";
 
 type PendingAction = "start" | "stop" | "restart";
 
+type TabId = "containers" | "autoheal";
+
+interface PolicyTarget {
+  id: string;
+  name: string;
+}
+
 interface Notice {
   tone: "success" | "error";
   text: string;
@@ -70,6 +80,8 @@ export function ContainersPage() {
     container: Container;
   } | null>(null);
   const [inspecting, setInspecting] = useState<Container | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("containers");
+  const [policyTarget, setPolicyTarget] = useState<PolicyTarget | null>(null);
 
   const containersQuery = useQuery({
     queryKey: ["containers"],
@@ -187,6 +199,45 @@ export function ContainersPage() {
         </div>
       </div>
 
+      <div
+        className="inline-flex flex-wrap items-center gap-1 rounded-lg border bg-muted/40 p-1"
+        role="tablist"
+        aria-label="Bagian container"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "containers"}
+          data-testid="container-tab-containers"
+          onClick={() => setActiveTab("containers")}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors",
+            activeTab === "containers"
+              ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-foreground/10"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Boxes className="size-3.5" />
+          Containers
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "autoheal"}
+          data-testid="container-tab-autoheal"
+          onClick={() => setActiveTab("autoheal")}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors",
+            activeTab === "autoheal"
+              ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-foreground/10"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <HeartPulse className="size-3.5" />
+          Auto-Healing
+        </button>
+      </div>
+
       {notice ? (
         <div
           className={cn(
@@ -214,6 +265,8 @@ export function ContainersPage() {
         </div>
       ) : null}
 
+      {activeTab === "containers" ? (
+        <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-3">
         <Card size="sm">
           <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -331,10 +384,19 @@ export function ContainersPage() {
               onStop={(container) => setPending({ action: "stop", container })}
               onRestart={(container) => setPending({ action: "restart", container })}
               onInspect={(container) => setInspecting(container)}
+              onConfigure={(container) =>
+                setPolicyTarget({ id: container.id, name: container.name })
+              }
             />
           )}
         </CardContent>
       </Card>
+        </div>
+      ) : (
+        <AutoHealingPanel
+          onConfigure={(container) => setPolicyTarget(container)}
+        />
+      )}
 
       <ConfirmDialog
         open={pending !== null}
@@ -359,6 +421,18 @@ export function ContainersPage() {
             runAction(pending.action, pending.container);
           }
         }}
+      />
+
+      <ContainerPolicyDialog
+        open={policyTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPolicyTarget(null);
+          }
+        }}
+        container={policyTarget}
+        onSaved={(message) => setNotice({ tone: "success", text: message })}
+        onError={(message) => setNotice({ tone: "error", text: message })}
       />
 
       <InspectDialog
