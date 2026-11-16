@@ -245,7 +245,7 @@ class TestDeletePolicy:
         assert deleted == name
         assert container_policy_repository.get_by_name(db_session, name) is None
 
-    def test_reset_limits_sends_zero_values(self, db_session: Session) -> None:
+    def test_delete_does_not_touch_docker_limits(self, db_session: Session) -> None:
         name = f"web-{uuid.uuid4().hex[:6]}"
         db_session.add(
             ContainerPolicy(container_name=name, cpu_quota=100_000, cpu_period=100_000)
@@ -257,13 +257,9 @@ class TestDeletePolicy:
         with patch(
             "app.services.container_service._get_client", return_value=client
         ):
-            container_policy_service.delete_policy(
-                db_session, "abcdef1234567890", reset_limits=True
-            )
+            container_policy_service.delete_policy(db_session, "abcdef1234567890")
 
-        body = client.api._post_json.call_args.kwargs["data"]
-        assert body["Memory"] == 0
-        assert body["CpuQuota"] == 0
+        client.api._post_json.assert_not_called()
 
     def test_delete_missing_policy_raises(self, db_session: Session) -> None:
         name = f"web-{uuid.uuid4().hex[:6]}"

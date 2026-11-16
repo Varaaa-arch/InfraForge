@@ -17,6 +17,7 @@
 - [Getting Started](#getting-started)
 - [Alerting](#alerting)
 - [Milestone 6 Fase 1 — Multi-Channel Alert](#milestone-6-fase-1--multi-channel-alert)
+- [Milestone 6 Fase 2 — Auto-Healing & Resource Container](#milestone-6-fase-2--auto-healing--resource-container)
 - [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
 - [Manajemen Konfigurasi & Rahasia](#manajemen-konfigurasi-rahasia)
 - [Tata Kelola Platform](#tata-kelola-platform)
@@ -103,8 +104,8 @@ flowchart TD
 | Kategori | Detail |
 |---|---|
 | **Deployment** | Deploy aplikasi hanya dengan beberapa klik |
-| **Container Management** | Start, stop, restart, delete, view logs |
-| **Infrastructure UI** | Halaman Servers (CRUD + status exporter Prometheus) & Containers (health, port mapping, CPU/RAM, lifecycle, inspect) |
+| **Container Management** | Start, stop, restart, delete, view logs, limit CPU/memory & auto-healing |
+| **Infrastructure UI** | Halaman Servers (CRUD + status exporter Prometheus) & Containers (health, port mapping, CPU/RAM, lifecycle, inspect, resource limit, tab Auto-Healing) |
 | **Configuration & Secrets** | Environment variable per project terenkripsi (Fernet), secret masking, indikator re-deploy, bulk import `.env` |
 | **Monitoring** | CPU, RAM, Disk, Docker, Network, Uptime |
 | **Logging** | Lihat log seluruh container dari satu tempat |
@@ -366,6 +367,30 @@ Telegram, atau Slack sesuai severity.
 
 ---
 
+## Milestone 6 Fase 2 — Auto-Healing & Resource Container
+
+Container yang dijalankan lewat Docker Compose bisa diberi batas resource dan
+dipantau kesehatannya langsung dari dashboard.
+
+- **Resource limit per container** — dialog di halaman Containers mengatur
+  CPU (cores), memory (MiB), dan restart policy. Limit langsung diterapkan ke
+  container running dan disimpan agar dipasang ulang saat start/restart atau
+  setelah `docker compose up`.
+- **Auto-healing opt-in** — aktifkan per container dengan ambang unhealthy,
+  batas restart per window, dan cooldown. Worker backend memantau healthcheck
+  dan me-restart container yang gagal berturut-turut.
+- **Tab Auto-Healing** — status worker, daftar policy, dan 25 insiden terbaru
+  (unhealthy, auto-restart, recovered) dalam satu tempat.
+- **Jejak audit** — setiap insiden dan perubahan policy tercatat di Audit Logs
+  sebagai system event.
+- **RBAC** — hanya developer/admin yang dapat mengubah policy; viewer tetap
+  bisa memantau status dan insiden.
+
+> Rincian kontrak API, konfigurasi worker, migrasi, dan bukti pengujian ada di
+> [`docs/milestone-6-phase-2.md`](docs/milestone-6-phase-2.md).
+
+---
+
 ## Manajemen Infrastruktur UI
 
 Milestone 5 Fase 1 menambahkan sisi operasional dari metrik Milestone 4: dua
@@ -492,6 +517,7 @@ perintah reproduksi, dan hasil pengujian) ada di
 - [x] Monitoring stack (Prometheus, Node Exporter, cAdvisor)
 - [x] Alerting (Alertmanager, webhook relay, Discord/Telegram/Slack, routing severity)
 - [x] UI manajemen server & container (Servers, Containers, lifecycle, inspect)
+- [x] Resource limit CPU/memory & auto-healing container (health polling, audit insiden)
 - [x] UI manajemen project & environment variable (secrets manager, bulk import .env)
 - [x] Tata kelola: RBAC (Admin/Developer/Viewer), audit log, personal access token, halaman pengaturan
 - [ ] UI manajemen aplikasi dan deployment

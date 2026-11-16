@@ -86,12 +86,6 @@ services:
       - "9093:9093"
     environment:
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-dev-alert-token}
-      AUTO_HEAL_ENABLED: ${AUTO_HEAL_ENABLED:-true}
-      HEALTH_POLL_INTERVAL_SECONDS: ${HEALTH_POLL_INTERVAL_SECONDS:-30}
-      HEALTH_UNHEALTHY_THRESHOLD: ${HEALTH_UNHEALTHY_THRESHOLD:-3}
-      AUTO_HEAL_MAX_RESTARTS: ${AUTO_HEAL_MAX_RESTARTS:-3}
-      AUTO_HEAL_COOLDOWN_SECONDS: ${AUTO_HEAL_COOLDOWN_SECONDS:-300}
-      AUTO_HEAL_WINDOW_MINUTES: ${AUTO_HEAL_WINDOW_MINUTES:-60}
     volumes:
       - ./infrastructure/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.template.yml:ro,Z
       - alertmanager_data:/alertmanager

@@ -402,7 +402,7 @@ export function ContainerPolicyDialog({
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteContainerPolicy(container!.id, true),
+    mutationFn: () => deleteContainerPolicy(container!.id),
     onSuccess: (result) => {
       invalidate();
       onSaved?.(result.message);
@@ -437,6 +437,7 @@ export function ContainerPolicyDialog({
           <DialogDescription>
             Atur limit CPU/memory dan restart otomatis untuk{" "}
             <span className="font-medium text-foreground">{container?.name}</span>.
+            Limit yang sudah terpasang baru hilang saat container dibuat ulang.
           </DialogDescription>
         </DialogHeader>
 

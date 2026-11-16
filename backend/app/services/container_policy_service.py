@@ -187,31 +187,18 @@ def upsert_policy(
     return policy, effective
 
 
-def delete_policy(
-    db: Session,
-    container_id: str,
-    *,
-    reset_limits: bool = False,
-) -> str:
-    """Hapus policy. Jika ``reset_limits`` benar, hapus limit di Docker."""
+def delete_policy(db: Session, container_id: str) -> str:
+    """Hapus policy tersimpan.
+
+    Limit CPU/memory yang sudah aktif di Docker tidak dapat dihapus lewat
+    Engine API (nilai 0 dianggap "tanpa perubahan"), sehingga tetap berlaku
+    sampai container dibuat ulang.
+    """
     container, attrs = _fetch_container_meta(container_id)
     name = _container_name(container, attrs, container_id)
     policy = container_policy_repository.get_by_name(db, name)
     if policy is None:
         raise ValueError(f"Policy untuk container {name} tidak ditemukan")
-
-    if reset_limits:
-        reset = ContainerPolicy(
-            container_name=name,
-            cpu_period=CPU_PERIOD_DEFAULT,
-            restart_policy=policy.restart_policy or "no",
-        )
-        try:
-            _update_container(container, build_update_data(reset))
-        except Exception as exc:
-            raise RuntimeError(
-                f"Gagal mereset limit container {name}: {exc}"
-            ) from exc
 
     container_policy_repository.delete(db, policy)
     db.commit()

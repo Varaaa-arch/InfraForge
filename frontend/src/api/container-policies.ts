@@ -23,11 +23,9 @@ export function saveContainerPolicy(
 
 export function deleteContainerPolicy(
   containerId: string,
-  resetLimits = true,
-): Promise<{ message: string; container_name: string; reset_limits: boolean }> {
-  const params = new URLSearchParams({ reset_limits: String(resetLimits) });
-  return apiFetch<{ message: string; container_name: string; reset_limits: boolean }>(
-    `/containers/${containerId}/policy?${params.toString()}`,
+): Promise<{ message: string; container_name: string }> {
+  return apiFetch<{ message: string; container_name: string }>(
+    `/containers/${containerId}/policy`,
     { method: "DELETE" },
   );
 }

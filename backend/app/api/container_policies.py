@@ -124,22 +124,18 @@ def upsert_container_policy(
     response_model=ApiResponse[dict[str, object]],
     summary="Hapus policy resource container",
     description=(
-        "Menghapus policy. Gunakan `?reset_limits=true` untuk sekaligus "
-        "menghapus limit CPU/memory yang aktif di Docker."
+        "Menghapus policy tersimpan. Limit CPU/memory yang sudah aktif di "
+        "Docker tetap berlaku sampai container dibuat ulang (Engine API "
+        "menganggap nilai 0 sebagai \"tanpa perubahan\")."
     ),
 )
 def delete_container_policy(
     container_id: str,
-    reset_limits: bool = Query(
-        default=False, description="Hapus juga limit CPU/memory di Docker"
-    ),
     _: User = Depends(require_permission(Permission.CONTAINER_LIFECYCLE)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[dict[str, object]]:
     try:
-        name = container_policy_service.delete_policy(
-            db, container_id, reset_limits=reset_limits
-        )
+        name = container_policy_service.delete_policy(db, container_id)
     except ValueError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
     except RuntimeError as exc:
@@ -147,9 +143,11 @@ def delete_container_policy(
 
     return ApiResponse(
         data={
-            "message": f"Policy {name} dihapus",
+            "message": (
+                f"Policy {name} dihapus. Limit yang sudah aktif di Docker "
+                "tetap berlaku sampai container dibuat ulang."
+            ),
             "container_name": name,
-            "reset_limits": reset_limits,
         }
     )
 
