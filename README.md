@@ -16,6 +16,7 @@
 - [Struktur Folder](#struktur-folder)
 - [Getting Started](#getting-started)
 - [Alerting](#alerting)
+- [Milestone 6 Fase 1 — Multi-Channel Alert](#milestone-6-fase-1--multi-channel-alert)
 - [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
 - [Manajemen Konfigurasi & Rahasia](#manajemen-konfigurasi-rahasia)
 - [Tata Kelola Platform](#tata-kelola-platform)
@@ -62,7 +63,7 @@ flowchart TD
     H --> J[Grafana Dashboard]
     I --> J
     H --> K[Alertmanager]
-    K --> L["Notifikasi ke Discord / Telegram"]
+    K --> L["Notifikasi ke Discord / Telegram / Slack"]
 ```
 
 1. **Push** -> developer push code ke GitHub.
@@ -70,7 +71,7 @@ flowchart TD
 3. **Deploy** -> InfraForge menarik image terbaru dan menjalankan `docker compose up` beserta health check.
 4. **Routing** -> Traefik otomatis membuat routing dan HTTPS untuk domain aplikasi.
 5. **Observability** -> Prometheus mengambil metric, Loki mengumpulkan log, semuanya tampil di Grafana.
-6. **Alerting** -> Alertmanager mengirim notifikasi ke Discord/Telegram saat CPU tinggi, RAM penuh, atau container mati.
+6. **Alerting** -> Alertmanager mengirim notifikasi ke Discord/Telegram/Slack sesuai severity saat CPU tinggi, RAM penuh, atau container mati.
 
 ---
 
@@ -107,7 +108,7 @@ flowchart TD
 | **Configuration & Secrets** | Environment variable per project terenkripsi (Fernet), secret masking, indikator re-deploy, bulk import `.env` |
 | **Monitoring** | CPU, RAM, Disk, Docker, Network, Uptime |
 | **Logging** | Lihat log seluruh container dari satu tempat |
-| **Alerting** | Rules Prometheus, riwayat alert, notifikasi Discord/Telegram |
+| **Alerting** | Rules Prometheus warning & critical, riwayat alert, notifikasi Discord/Telegram/Slack dengan routing severity |
 | **Project Management** | Satu server bisa kelola banyak project sekaligus |
 | **Authentication** | JWT-based authentication |
 | **Backup** | Backup database & file ke MinIO |
@@ -299,28 +300,34 @@ docker compose exec backend uv run --no-dev python scripts/seed_demo.py
 
 Alert mengalir dari Prometheus ke Alertmanager, lalu diteruskan ke backend
 InfraForge lewat webhook terautentikasi. Backend menyimpan riwayat alert dan
-mengirim notifikasi ke channel Discord/Telegram yang aktif.
+mengirim notifikasi ke channel Discord, Telegram, atau Slack yang aktif sesuai
+threshold severity masing-masing.
 
 ```
 Prometheus rules → Alertmanager (9093)
   → POST /alerts/webhook (X-InfraForge-Token)
-  → PostgreSQL + Discord/Telegram
+  → PostgreSQL + Discord/Telegram/Slack
 ```
 
-Akses halaman **Alerts** di dashboard untuk melihat riwayat firing/resolved dan
-mengelola channel notifikasi (tambah, aktif/nonaktif, test, hapus).
+Kelola channel di **Settings → Notifikasi** (admin): tambah channel, atur
+threshold **Semua severity / Warning ke atas / Hanya critical**, kirim test,
+ubah, aktif/nonaktif, atau hapus. Halaman **Alerts** menampilkan riwayat
+firing/resolved dan ringkasan channel dengan tautan ke pengaturan.
 
 **Rules bawaan**
 
-| Rule | Kondisi |
-|---|---|
-| `HighHostCPUUsage` | CPU host > 90% selama 5 menit |
-| `HighHostMemoryUsage` | RAM host > 90% selama 5 menit |
-| `HighDiskUsage` | Disk host > 90% selama 5 menit |
-| `InfraContainerDown` | Container compose `infraforge` mati selama 2 menit |
-| `ContainerRestartLoop` | Restart container > 2 kali dalam 15 menit |
-| `DockerDaemonUnavailable` | Docker daemon tidak terdeteksi |
-| `MonitoringTargetDown` | Target scrape Prometheus down |
+| Rule | Kondisi | Severity |
+|---|---|---|
+| `HighHostCPUUsageWarning` | CPU host > 75% selama 5 menit | warning |
+| `HighHostMemoryUsageWarning` | RAM host > 75% selama 5 menit | warning |
+| `HighDiskUsageWarning` | Disk host > 80% selama 5 menit | warning |
+| `HighHostCPUUsage` | CPU host > 90% selama 5 menit | critical |
+| `HighHostMemoryUsage` | RAM host > 90% selama 5 menit | critical |
+| `HighDiskUsage` | Disk host > 90% selama 5 menit | critical |
+| `InfraContainerDown` | Container compose `infraforge` mati selama 2 menit | critical |
+| `ContainerRestartLoop` | Restart container > 2 kali dalam 15 menit | critical |
+| `DockerDaemonUnavailable` | Docker daemon tidak terdeteksi | critical |
+| `MonitoringTargetDown` | Target scrape Prometheus down | critical |
 
 **Konfigurasi**
 
@@ -330,11 +337,32 @@ mengelola channel notifikasi (tambah, aktif/nonaktif, test, hapus).
 - `ALERT_REQUEST_TIMEOUT` — timeout pengiriman notifikasi (detik, default 10).
 - Webhook Alertmanager diarahkan ke `http://backend:8000/alerts/webhook` pada
   `infrastructure/alertmanager/alertmanager.yml`.
+- `host.docker.internal:host-gateway` dipetakan ke container backend agar
+  webhook uji di host (mock E2E) dapat dijangkau dari dalam container.
 
 > Catatan: cAdvisor pada host dengan storage containerd/overlayfs tertentu tidak
 > dapat melihat container Docker. Metrik container (`up`, restart count)
 > dipasok exporter backend di `GET /metrics`, sedangkan rule CPU/RAM/Disk
 > berbasis metrik host dari node-exporter.
+
+---
+
+## Milestone 6 Fase 1 — Multi-Channel Alert
+
+Tim tidak perlu terus menatap dashboard: alert dikirim otomatis ke Discord,
+Telegram, atau Slack sesuai severity.
+
+- **Alert destination di Settings** — tab Notifikasi mengelola channel
+  (Discord webhook, Telegram bot token + chat ID, Slack incoming webhook),
+  threshold severity, status aktif, serta aksi ubah/hapus.
+- **Routing otomatis** — channel `info` menerima semua alert, `warning`
+  menerima warning + critical, dan `critical` hanya menerima critical.
+  Alert resolved mengikuti severity aslinya.
+- **Test notification** — tombol per channel mengirim pesan uji nyata dan
+  menampilkan alasan kegagalan dari backend bila webhook tidak dapat dijangkau.
+
+> Rincian kontrak API, migrasi, matriks routing, dan bukti pengujian ada di
+> [`docs/milestone-6-phase-1.md`](docs/milestone-6-phase-1.md).
 
 ---
 
@@ -427,8 +455,9 @@ sekali**; database menyimpan hash SHA-256. Token mendukung scope baca saja atau
 baca–tulis, masa berlaku, pencatatan `last_used_at`, dan revoke.
 
 **Pengaturan** — `/settings` bertab: Profil, Keamanan (ganti password), API
-Token, Pengguna (admin: ubah peran/status), dan Notifikasi (tautan ke channel
-di `/alerts`). Menu pengguna menampilkan badge peran dan shortcut pengaturan.
+Token, Pengguna (admin: ubah peran/status), dan Notifikasi (kelola alert
+destination Discord/Telegram/Slack + test kirim). Menu pengguna menampilkan
+badge peran dan shortcut pengaturan.
 
 > Rincian kontrak API, matriks izin, dan bukti pengujian ada di
 > [`docs/milestone-5-phase-3.md`](docs/milestone-5-phase-3.md).
@@ -461,7 +490,7 @@ perintah reproduksi, dan hasil pengujian) ada di
 
 - [x] Centralized logging (Loki + Promtail + WebSocket tail)
 - [x] Monitoring stack (Prometheus, Node Exporter, cAdvisor)
-- [x] Alerting (Alertmanager, webhook relay, Discord/Telegram)
+- [x] Alerting (Alertmanager, webhook relay, Discord/Telegram/Slack, routing severity)
 - [x] UI manajemen server & container (Servers, Containers, lifecycle, inspect)
 - [x] UI manajemen project & environment variable (secrets manager, bulk import .env)
 - [x] Tata kelola: RBAC (Admin/Developer/Viewer), audit log, personal access token, halaman pengaturan
