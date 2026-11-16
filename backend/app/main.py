@@ -11,6 +11,7 @@ from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
 from app.database.redis_client import check_redis_connection
 from app.database.session import check_database_connection
+from app.services import auto_heal_service
 from app.middleware.audit_middleware import AuditLogMiddleware
 from app.middleware.logging_middleware import RequestLoggingMiddleware
 from app.websocket.deployment_logs import router_ws
@@ -122,6 +123,13 @@ tags_metadata = [
         ),
     },
     {
+        "name": "container-policies",
+        "description": (
+            "Policy resource CPU/memory, restart policy, dan auto-healing per "
+            "container. Insiden auto-healing dicatat sebagai audit log system."
+        ),
+    },
+    {
         "name": "websocket",
         "description": (
             "**WebSocket** endpoints untuk streaming real-time. "
@@ -141,7 +149,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     check_database_connection()
     check_redis_connection()
+    auto_heal_service.start_worker()
     yield
+    await auto_heal_service.stop_worker()
     logger.info(f"Shutting down {settings.APP_NAME}")
 
 

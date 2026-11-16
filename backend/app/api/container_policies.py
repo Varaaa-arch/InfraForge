@@ -3,21 +3,31 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.permissions import require_permission
 from app.core.roles import Permission
 from app.database.session import get_db
+from app.models.audit_log import AuditLog
 from app.models.user import User
+from app.repositories import container_policy_repository
 from app.schemas.container_policy import (
+    AutoHealWorkerStatus,
+    ContainerIncidentResponse,
     ContainerPolicyDetail,
+    ContainerPolicyListResponse,
     ContainerPolicyMutationResult,
     ContainerPolicyResponse,
     ContainerPolicyUpsert,
 )
 from app.schemas.response import ApiResponse
-from app.services import container_policy_service, container_service
+from app.services import (
+    auto_heal_service,
+    container_policy_service,
+    container_service,
+)
 
 router = APIRouter(tags=["container-policies"])
 
@@ -141,4 +151,67 @@ def delete_container_policy(
             "container_name": name,
             "reset_limits": reset_limits,
         }
+    )
+
+
+@router.get(
+    "/container-policies",
+    response_model=ApiResponse[ContainerPolicyListResponse],
+    summary="Daftar policy container",
+    description=(
+        "Menampilkan semua policy resource/auto-healing beserta status worker "
+        "health polling."
+    ),
+)
+def list_container_policies(
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiResponse[ContainerPolicyListResponse]:
+    policies = container_policy_repository.list_all(db)
+    return ApiResponse(
+        data=ContainerPolicyListResponse(
+            items=[
+                ContainerPolicyResponse.model_validate(policy) for policy in policies
+            ],
+            worker=AutoHealWorkerStatus.model_validate(
+                auto_heal_service.get_worker_status()
+            ),
+        )
+    )
+
+
+@router.get(
+    "/container-policies/incidents",
+    response_model=ApiResponse[list[ContainerIncidentResponse]],
+    summary="Insiden auto-healing",
+    description=(
+        "Riwayat insiden auto-healing (unhealthy, auto-restart, recovered) dari "
+        "audit log. Filter opsional berdasarkan nama container."
+    ),
+)
+def list_container_incidents(
+    container_name: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=50, ge=1, le=200),
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiResponse[list[ContainerIncidentResponse]]:
+    stmt = select(AuditLog).where(
+        AuditLog.action.in_(auto_heal_service.INCIDENT_ACTIONS)
+    )
+    if container_name:
+        stmt = stmt.where(AuditLog.resource_id == container_name)
+    rows = list(
+        db.execute(stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(limit)).scalars()
+    )
+    return ApiResponse(
+        data=[
+            ContainerIncidentResponse(
+                id=row.id,
+                action=row.action,
+                container_name=row.resource_id,
+                created_at=row.created_at,
+                details=row.details,
+            )
+            for row in rows
+        ]
     )

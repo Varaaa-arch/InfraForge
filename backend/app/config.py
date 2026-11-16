@@ -71,6 +71,19 @@ class Settings(BaseSettings):
     ALERT_REQUEST_TIMEOUT: float = 10.0
 
     # ---------------------------------------------------------------------------
+    # Auto-Healing Container
+    # ---------------------------------------------------------------------------
+    # Worker health polling. Default nonaktif agar test/dev tidak memanggil
+    # Docker daemon; docker-compose mengaktifkannya untuk deployment.
+    AUTO_HEAL_ENABLED: bool = False
+    HEALTH_POLL_INTERVAL_SECONDS: int = 30
+    # Ambang default saat policy baru dibuat (bisa dioverride per container).
+    HEALTH_UNHEALTHY_THRESHOLD: int = 3
+    AUTO_HEAL_MAX_RESTARTS: int = 3
+    AUTO_HEAL_COOLDOWN_SECONDS: int = 300
+    AUTO_HEAL_WINDOW_MINUTES: int = 60
+
+    # ---------------------------------------------------------------------------
     # ARQ Worker (Async Redis Queue)
     # ---------------------------------------------------------------------------
     # Jumlah job yang bisa diproses worker secara bersamaan.

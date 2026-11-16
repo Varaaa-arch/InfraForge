@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -93,3 +93,33 @@ class ContainerPolicyMutationResult(BaseModel):
     policy: ContainerPolicyResponse
     effective: EffectiveContainerLimits
     message: str
+
+
+class AutoHealWorkerStatus(BaseModel):
+    """Status worker auto-healing yang berjalan di backend."""
+
+    enabled: bool
+    running: bool
+    interval_seconds: int
+    unhealthy_threshold_default: int
+    max_restarts_default: int
+    last_poll_at: datetime | None = None
+    last_error: str | None = None
+    last_stats: dict[str, int] | None = None
+
+
+class ContainerPolicyListResponse(BaseModel):
+    items: list[ContainerPolicyResponse]
+    worker: AutoHealWorkerStatus
+
+
+class ContainerIncidentResponse(BaseModel):
+    """Insiden auto-healing dari audit log (system event)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    action: str
+    container_name: str | None = None
+    created_at: datetime
+    details: dict[str, Any] | None = None
