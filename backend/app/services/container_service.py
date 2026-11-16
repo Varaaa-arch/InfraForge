@@ -338,6 +338,16 @@ def _get_container(client: Any, container_id: str) -> Any:
         raise RuntimeError(f"Gagal mengambil container {container_id}: {exc}") from exc
 
 
+def _reapply_policy(container: Any) -> None:
+    """Terapkan ulang policy resource setelah container hidup kembali."""
+    name = getattr(container, "name", None)
+    if not name:
+        return
+    from app.services import container_policy_service
+
+    container_policy_service.reapply_for_container(str(name))
+
+
 def start_container(container_id: str) -> None:
     """Start container yang sedang stopped/paused."""
     client = _get_client()
@@ -347,6 +357,7 @@ def start_container(container_id: str) -> None:
         logger.info(f"Container {container_id} started")
     except Exception as exc:
         raise RuntimeError(f"Gagal start container {container_id}: {exc}") from exc
+    _reapply_policy(container)
 
 
 def stop_container(container_id: str, timeout: int = 10) -> None:
@@ -369,6 +380,7 @@ def restart_container(container_id: str, timeout: int = 10) -> None:
         logger.info(f"Container {container_id} restarted")
     except Exception as exc:
         raise RuntimeError(f"Gagal restart container {container_id}: {exc}") from exc
+    _reapply_policy(container)
 
 
 def remove_container(container_id: str, force: bool = False) -> None:

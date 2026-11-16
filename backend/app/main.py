@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from app.api import alerts, api_tokens, applications, audit_logs, auth, containers, dashboard, deployments, docker, env_vars, health, logs, metrics, projects, servers, users, webhooks
+from app.api import alerts, api_tokens, applications, audit_logs, auth, container_policies, containers, dashboard, deployments, docker, env_vars, health, logs, metrics, projects, servers, users, webhooks
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -176,6 +176,7 @@ app.include_router(env_vars.router)
 app.include_router(applications.router)
 app.include_router(docker.router)
 app.include_router(containers.router)
+app.include_router(container_policies.router)
 app.include_router(logs.router)
 app.include_router(alerts.router)
 app.include_router(alerts.channels_router)

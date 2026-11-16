@@ -119,6 +119,18 @@ AUDIT_RULES: tuple[AuditRule, ...] = (
         "container",
     ),
     _rule("DELETE", r"/containers/(?P<id>[^/]+)", "CONTAINER_DELETE", "container"),
+    _rule(
+        "PUT",
+        r"/containers/(?P<id>[^/]+)/policy",
+        "CONTAINER_POLICY_UPDATE",
+        "container",
+    ),
+    _rule(
+        "DELETE",
+        r"/containers/(?P<id>[^/]+)/policy",
+        "CONTAINER_POLICY_DELETE",
+        "container",
+    ),
     # Deployment
     _rule("POST", r"/deployments", "DEPLOY", "deployment"),
     _rule("POST", r"/deployments/(?P<id>\d+)/rollback", "ROLLBACK", "deployment"),

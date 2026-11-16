@@ -365,6 +365,14 @@ def _run_deployment(
         # --- 6. Jalankan docker compose (output ke log file) ---
         _append_log(log_file, "[InfraForge] Menjalankan docker compose build + up...\n")
         _run_compose(repo_dir, app.compose_path, log_file=log_file)
+        from app.services import container_policy_service
+
+        applied = container_policy_service.reapply_all()
+        if applied:
+            _append_log(
+                log_file,
+                f"[InfraForge] Reapply policy container: {applied} policy.\n",
+            )
         _append_log(log_file, "[InfraForge] docker compose selesai.\n")
 
         # --- 7. Health check: pastikan container benar-benar running ---
