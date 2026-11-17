@@ -5,6 +5,8 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { ApiError } from "@/api/client";
 import { fetchProject } from "@/api/projects";
+import { DeployTokensCard } from "@/components/projects/deploy-tokens-card";
+import { DeploymentHistory } from "@/components/projects/deployment-history";
 import { EnvBulkImportDialog } from "@/components/projects/env-bulk-import-dialog";
 import { EnvVarsPanel } from "@/components/projects/env-vars-panel";
 import { ProjectSummary } from "@/components/projects/project-summary";
@@ -12,17 +14,25 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/hooks/use-permissions";
 import { cn } from "@/lib/utils";
 
-type ProjectTab = "summary" | "env";
+type ProjectTab = "summary" | "env" | "ci" | "deployments";
 
 export function ProjectDetailPage() {
   const { id } = useParams();
   const projectId = Number(id);
   const [searchParams, setSearchParams] = useSearchParams();
   const [bulkOpen, setBulkOpen] = useState(false);
+  const { user } = useAuth();
+  const { canDeploy } = usePermissions();
 
-  const tab: ProjectTab = searchParams.get("tab") === "env" ? "env" : "summary";
+  const tabParam = searchParams.get("tab");
+  const tab: ProjectTab =
+    tabParam === "env" || tabParam === "ci" || tabParam === "deployments"
+      ? tabParam
+      : "summary";
 
   const projectQuery = useQuery({
     queryKey: ["project", projectId],
@@ -32,6 +42,7 @@ export function ProjectDetailPage() {
   });
 
   const project = projectQuery.data;
+  const canManageDeployTokens = canDeploy && user?.id === project?.owner_id;
 
   const listError = projectQuery.error
     ? projectQuery.error instanceof ApiError
@@ -43,10 +54,10 @@ export function ProjectDetailPage() {
     setSearchParams(
       (previous) => {
         const params = new URLSearchParams(previous);
-        if (next === "env") {
-          params.set("tab", "env");
-        } else {
+        if (next === "summary") {
           params.delete("tab");
+        } else {
+          params.set("tab", next);
         }
         return params;
       },
@@ -151,13 +162,50 @@ export function ProjectDetailPage() {
           >
             Environment Variables
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "ci"}
+            onClick={() => setTab("ci")}
+            data-testid="tab-ci"
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm transition-colors",
+              tab === "ci"
+                ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-foreground/10"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+          >
+            CI/CD
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "deployments"}
+            onClick={() => setTab("deployments")}
+            data-testid="tab-deployments"
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm transition-colors",
+              tab === "deployments"
+                ? "bg-background font-medium text-foreground shadow-sm ring-1 ring-foreground/10"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+          >
+            Deployment
+          </button>
         </div>
       </div>
 
       {tab === "summary" ? (
         <ProjectSummary project={project} />
-      ) : (
+      ) : tab === "env" ? (
         <EnvVarsPanel projectId={project.id} onOpenBulkImport={() => setBulkOpen(true)} />
+      ) : tab === "ci" ? (
+        <DeployTokensCard
+          projectId={project.id}
+          canManage={canManageDeployTokens}
+        />
+      ) : (
+        <DeploymentHistory projectId={project.id} />
       )}
 
       <EnvBulkImportDialog
