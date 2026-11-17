@@ -3,7 +3,8 @@ from app.models.api_token import ApiToken
 from app.models.application import AppStatus, Application
 from app.models.audit_log import AuditLog
 from app.models.container_policy import ContainerPolicy
-from app.models.deployment import Deployment, DeploymentStatus
+from app.models.deployment import Deployment, DeploymentStatus, TriggerSource
+from app.models.deployment_token import DeploymentToken
 from app.models.env_var import EnvVar
 from app.models.project import GitProvider, Project
 from app.models.server import AuthType, Server, ServerStatus
@@ -22,10 +23,12 @@ __all__ = [
     "AuthType",
     "Deployment",
     "DeploymentStatus",
+    "DeploymentToken",
     "EnvVar",
     "GitProvider",
     "Project",
     "Server",
     "ServerStatus",
+    "TriggerSource",
     "User",
 ]

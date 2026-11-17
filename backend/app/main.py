@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from app.api import alerts, api_tokens, applications, audit_logs, auth, container_policies, containers, dashboard, deployments, docker, env_vars, health, logs, metrics, projects, servers, users, webhooks
+from app.api import alerts, api_tokens, applications, audit_logs, auth, container_policies, containers, dashboard, deploy_tokens, deployments, docker, env_vars, health, logs, metrics, projects, servers, users, webhooks
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -48,6 +48,22 @@ tags_metadata = [
         "description": (
             "Personal Access Token untuk CLI/CI-CD. Token plaintext hanya "
             "ditampilkan sekali saat dibuat; database menyimpan hash SHA-256."
+        ),
+    },
+    {
+        "name": "deploy-tokens",
+        "description": (
+            "Deployment token CI/CD per project. Token plaintext hanya tampil "
+            "sekali saat dibuat; database menyimpan hash SHA-256. Token dipakai "
+            "endpoint publik `/deploy/trigger/{token}`."
+        ),
+    },
+    {
+        "name": "deploy-trigger",
+        "description": (
+            "Endpoint publik trigger deployment untuk GitHub Actions/webhook. "
+            "Autentikasi memakai deployment token project (`dt_...`); deployment "
+            "dijalankan di background dan langsung mengembalikan 202."
         ),
     },
     {
@@ -179,6 +195,8 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(audit_logs.router)
 app.include_router(api_tokens.router)
+app.include_router(deploy_tokens.router)
+app.include_router(deploy_tokens.public_router)
 app.include_router(projects.router)
 app.include_router(dashboard.router)
 app.include_router(servers.router)

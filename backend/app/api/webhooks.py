@@ -33,6 +33,7 @@ from loguru import logger
 
 from app.config import settings
 from app.core.audit import log_audit
+from app.models.deployment import TriggerSource
 from app.database.session import SessionLocal
 from app.schemas.webhook import WebhookResponse
 from app.services import deployment_queue, webhook_service
@@ -165,7 +166,11 @@ async def github_webhook(
 
                 # Buat Deployment record (sync, langsung commit ke DB)
                 deployment, _app_obj, _server_obj = deployment_service.create_deployment_record(
-                    db, app.id, server_id, branch_override=branch
+                    db,
+                    app.id,
+                    server_id,
+                    branch_override=branch,
+                    trigger_source=TriggerSource.github_webhook.value,
                 )
 
                 # Mark delivery sebagai processed (idempotency)

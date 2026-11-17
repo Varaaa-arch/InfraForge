@@ -140,6 +140,20 @@ AUDIT_RULES: tuple[AuditRule, ...] = (
         "DEPLOY_HEALTH_CHECK",
         "deployment",
     ),
+    # Deployment token CI/CD (token mentah tidak pernah masuk path group)
+    _rule(
+        "POST",
+        r"/projects/(?P<project_id>\d+)/deploy-tokens",
+        "DEPLOY_TOKEN_CREATE",
+        "deploy_token",
+    ),
+    _rule(
+        "DELETE",
+        r"/projects/(?P<project_id>\d+)/deploy-tokens/(?P<id>\d+)",
+        "DEPLOY_TOKEN_REVOKE",
+        "deploy_token",
+    ),
+    _rule("POST", r"/deploy/trigger/[^/]+", "DEPLOY_TRIGGER", "deploy_token"),
     # Alert channel
     _rule("POST", r"/alert-channels", "ALERT_CHANNEL_CREATE", "alert_channel"),
     _rule(
@@ -219,6 +233,13 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
         resource_id = groups.pop("id", None)
 
         state = request.state
+        extra_details = getattr(state, "audit_details", None)
+        if isinstance(extra_details, dict):
+            groups = {**groups, **extra_details}
+        if resource_id is None:
+            resource_id = getattr(state, "audit_resource_id", None)
+        audit_path = getattr(state, "audit_path", None) or request.url.path
+
         user = getattr(state, "current_user", None)
         username = getattr(user, "username", None) or getattr(
             state, "audit_username", None
@@ -231,7 +252,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
             audit_service.AuditEvent(
                 action=rule.action,
                 method=request.method,
-                path=request.url.path,
+                path=audit_path,
                 status_code=status_code,
                 user_id=user_id,
                 username=username,

@@ -36,6 +36,14 @@ class DeploymentStatus(str, enum.Enum):
     failed = "failed"
 
 
+class TriggerSource(str, enum.Enum):
+    """Pemicu deployment (dicatat di kolom ``trigger_source``)."""
+
+    manual = "manual"
+    github_webhook = "github_webhook"
+    ci_token = "ci_token"
+
+
 class Deployment(Base):
     __tablename__ = "deployments"
 
@@ -69,6 +77,13 @@ class Deployment(Base):
         String(100),
         nullable=False,
         comment="Branch yang di-deploy",
+    )
+    trigger_source: Mapped[str] = mapped_column(
+        String(20),
+        default=TriggerSource.manual.value,
+        server_default=TriggerSource.manual.value,
+        nullable=False,
+        comment="Pemicu deployment: manual | github_webhook | ci_token",
     )
     commit_sha: Mapped[str | None] = mapped_column(
         String(40),

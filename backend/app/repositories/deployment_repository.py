@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models.deployment import Deployment, DeploymentStatus
+from app.models.deployment import Deployment, DeploymentStatus, TriggerSource
 
 
 def get_by_id(db: Session, deployment_id: int) -> Deployment | None:
@@ -100,6 +100,7 @@ def create(
     rollback_of: int | None = None,
     compose_path_snapshot: str | None = None,
     is_rollback: bool = False,
+    trigger_source: str = TriggerSource.manual.value,
 ) -> Deployment:
     """
     Buat entri deployment baru dengan status `pending`.
@@ -109,6 +110,7 @@ def create(
                                None untuk deployment biasa.
         compose_path_snapshot: Snapshot compose path dari deployment target rollback.
         is_rollback:           True jika ini adalah operasi rollback.
+        trigger_source:        Pemicu deployment (manual/github_webhook/ci_token).
 
     Commit dan refresh dilakukan di sini.
     """
@@ -120,6 +122,7 @@ def create(
         rollback_of=rollback_of,
         compose_path_snapshot=compose_path_snapshot,
         is_rollback=is_rollback,
+        trigger_source=trigger_source,
     )
     db.add(deployment)
     db.commit()

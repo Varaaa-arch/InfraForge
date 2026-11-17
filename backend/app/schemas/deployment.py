@@ -53,6 +53,10 @@ class DeploymentResponse(BaseModel):
     server_id: int | None
     status: DeploymentStatus
     branch: str
+    trigger_source: str = Field(
+        default="manual",
+        description="Pemicu deployment: manual | github_webhook | ci_token.",
+    )
     commit_sha: str | None
     log_path: str | None
     started_at: datetime

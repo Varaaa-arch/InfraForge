@@ -9,6 +9,7 @@ Endpoints:
 
 Query params GET /deployments:
   application_id : filter per aplikasi (opsional)
+  project_id     : filter semua aplikasi dalam satu project milik user (opsional)
   server_id      : filter per server target (opsional)
   status         : filter per status (pending/deploying/success/failed) (opsional)
   limit          : jumlah hasil (default 100, max 500)
@@ -107,6 +108,7 @@ def trigger_deployment(
         "Menampilkan history deployment milik user yang login. "
         "Semua filter bersifat opsional dan bisa dikombinasikan.\n\n"
         "- `application_id` — filter ke satu aplikasi tertentu\n"
+        "- `project_id` — filter semua aplikasi dalam satu project\n"
         "- `server_id` — filter ke satu server target\n"
         "- `status` — `pending` | `deploying` | `success` | `failed`\n"
         "- `limit` / `offset` — pagination standar"
@@ -116,6 +118,10 @@ def list_deployments(
     application_id: int | None = Query(
         default=None,
         description="Filter berdasarkan application ID",
+    ),
+    project_id: int | None = Query(
+        default=None,
+        description="Filter berdasarkan project ID (semua aplikasi dalam project)",
     ),
     server_id: int | None = Query(
         default=None,
@@ -148,6 +154,24 @@ def list_deployments(
         deployments = deployment_service.list_deployments_by_application(
             db,
             application_id,
+            status=status_filter,
+            limit=limit,
+            offset=offset,
+        )
+    elif project_id is not None:
+        project = project_service.get_project_by_id(db, project_id)
+        if project is None or project.owner_id != current_user.id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+        project_app_ids = [
+            app.id
+            for app in application_service.list_applications_by_project(
+                db, project_id
+            )
+        ]
+        deployments = deployment_service.list_deployments(
+            db,
+            project_app_ids,
+            server_id=server_id,
             status=status_filter,
             limit=limit,
             offset=offset,

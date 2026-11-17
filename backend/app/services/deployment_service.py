@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.application import AppStatus
-from app.models.deployment import Deployment, DeploymentStatus
+from app.models.deployment import Deployment, DeploymentStatus, TriggerSource
 from app.models.server import Server
 from app.repositories import application_repository
 from app.repositories import deployment_repository
@@ -257,12 +257,17 @@ def create_deployment_record(
     application_id: int,
     server_id: int,
     branch_override: str | None = None,
+    *,
+    trigger_source: str = TriggerSource.manual.value,
 ) -> tuple[Deployment, Application, Server]:
     """
     Validasi aplikasi dan server, lalu buat record Deployment (status=pending).
 
     Dipisah dari trigger_deployment agar webhook handler bisa membuat record
     terlebih dahulu, lalu men-enqueue job ke ARQ untuk eksekusi async.
+
+    Args:
+        trigger_source: Pemicu deployment (manual/github_webhook/ci_token).
 
     Returns:
         Tuple (deployment, application, server) — siap dipakai oleh _run_deployment.
@@ -279,7 +284,13 @@ def create_deployment_record(
         raise ValueError(f"Server tidak ditemukan: {server_id}")
 
     branch = branch_override or app.branch
-    deployment = deployment_repository.create(db, application_id, server_id, branch)
+    deployment = deployment_repository.create(
+        db,
+        application_id,
+        server_id,
+        branch,
+        trigger_source=trigger_source,
+    )
     return deployment, app, server
 
 
