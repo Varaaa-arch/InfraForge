@@ -525,3 +525,15 @@ def test_trigger_audit_event_uses_token_name_and_id(
     assert event.path == "/deploy/trigger/[redacted]"
     assert "dt_" not in event.username
     assert str(data["token"]) not in str(event.details)
+
+    invalid_token = "dt_deadbeef_" + "x" * 64
+    with patch("app.services.audit_service.record") as record_mock:
+        response = _trigger(client, invalid_token)
+    assert response.status_code == 404
+
+    recorded = [call.args[0] for call in record_mock.call_args_list]
+    events = [event for event in recorded if event.action == "DEPLOY_TRIGGER"]
+    assert len(events) == 1
+    assert events[0].path == "/deploy/trigger/[redacted]"
+    assert invalid_token not in events[0].path
+    assert invalid_token not in str(events[0].details)

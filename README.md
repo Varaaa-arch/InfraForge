@@ -18,6 +18,7 @@
 - [Alerting](#alerting)
 - [Milestone 6 Fase 1 — Multi-Channel Alert](#milestone-6-fase-1--multi-channel-alert)
 - [Milestone 6 Fase 2 — Auto-Healing & Resource Container](#milestone-6-fase-2--auto-healing--resource-container)
+- [Milestone 6 Fase 3 — CI/CD Trigger Tokens](#milestone-6-fase-3--cicd-trigger-tokens)
 - [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
 - [Manajemen Konfigurasi & Rahasia](#manajemen-konfigurasi-rahasia)
 - [Tata Kelola Platform](#tata-kelola-platform)
@@ -103,7 +104,8 @@ flowchart TD
 
 | Kategori | Detail |
 |---|---|
-| **Deployment** | Deploy aplikasi hanya dengan beberapa klik |
+| **Deployment** | Deploy aplikasi hanya dengan beberapa klik, riwayat status per project |
+| **CI/CD Integration** | Deployment token per project + endpoint publik trigger untuk GitHub Actions/GitLab CI |
 | **Container Management** | Start, stop, restart, delete, view logs, limit CPU/memory & auto-healing |
 | **Infrastructure UI** | Halaman Servers (CRUD + status exporter Prometheus) & Containers (health, port mapping, CPU/RAM, lifecycle, inspect, resource limit, tab Auto-Healing) |
 | **Configuration & Secrets** | Environment variable per project terenkripsi (Fernet), secret masking, indikator re-deploy, bulk import `.env` |
@@ -391,6 +393,30 @@ dipantau kesehatannya langsung dari dashboard.
 
 ---
 
+## Milestone 6 Fase 3 — CI/CD Trigger Tokens
+
+Pipeline CI/CD dapat memicu deployment tanpa menyimpan JWT user: setiap project
+punya deployment token sendiri dan endpoint publik yang aman.
+
+- **Deployment token per project** — tab CI/CD pada detail project membuat
+  token `dt_...` dengan masa berlaku. Plaintext hanya ditampilkan sekali
+  beserta snippet curl dan GitHub Actions; sisanya disimpan sebagai hash.
+- **Endpoint publik** — `POST /api/deploy/trigger/<token>` menerima branch
+  opsional dan langsung membalas `202` dengan `deployment_id`. Deployment
+  berjalan di background; token dapat dicabut kapan saja.
+- **Riwayat deployment project** — tab Deployment menampilkan pemicu
+  (Manual/GitHub Webhook/CI Token), branch, commit, status, dan durasi dengan
+  polling adaptif sehingga hasil CI/CD muncul tanpa refresh.
+- **Jejak audit & pengamanan** — pembuatan/pencabutan token dan setiap trigger
+  tercatat di Audit Logs; token mentah diredaksi dari path audit.
+- **RBAC** — hanya pemilik project dengan peran developer/admin yang dapat
+  mengelola token; pengguna lain melihat tampilan read-only.
+
+> Rincian kontrak API, contoh workflow, migrasi, dan bukti pengujian ada di
+> [`docs/milestone-6-phase-3.md`](docs/milestone-6-phase-3.md).
+
+---
+
 ## Manajemen Infrastruktur UI
 
 Milestone 5 Fase 1 menambahkan sisi operasional dari metrik Milestone 4: dua
@@ -520,6 +546,7 @@ perintah reproduksi, dan hasil pengujian) ada di
 - [x] Resource limit CPU/memory & auto-healing container (health polling, audit insiden)
 - [x] UI manajemen project & environment variable (secrets manager, bulk import .env)
 - [x] Tata kelola: RBAC (Admin/Developer/Viewer), audit log, personal access token, halaman pengaturan
+- [x] CI/CD: deployment token per project, endpoint trigger publik, riwayat deployment project
 - [ ] UI manajemen aplikasi dan deployment
 - [ ] Grafana dashboards & Traefik reverse proxy
 - [ ] Object storage MinIO untuk artefak deployment

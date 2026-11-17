@@ -183,6 +183,8 @@ def trigger_deployment_by_token(
     payload: DeploymentTriggerRequest | None = None,
     db: Session = Depends(get_db),
 ) -> ApiResponse[DeploymentTriggerResponse]:
+    request.state.audit_path = "/deploy/trigger/[redacted]"
+
     record = deployment_token_service.find_active_by_token(db, token)
     if record is None:
         raise HTTPException(
@@ -222,7 +224,6 @@ def trigger_deployment_by_token(
 
     request.state.audit_username = f"deploy-token:{record.name}"
     request.state.audit_resource_id = str(record.id)
-    request.state.audit_path = "/deploy/trigger/[redacted]"
     request.state.audit_details = {
         "application_id": str(application.id),
         "branch": deployment.branch,
