@@ -19,6 +19,7 @@
 - [Milestone 6 Fase 1 — Multi-Channel Alert](#milestone-6-fase-1--multi-channel-alert)
 - [Milestone 6 Fase 2 — Auto-Healing & Resource Container](#milestone-6-fase-2--auto-healing--resource-container)
 - [Milestone 6 Fase 3 — CI/CD Trigger Tokens](#milestone-6-fase-3--cicd-trigger-tokens)
+- [Milestone 7 Fase 1 — Webhook Receiver & Deployment Automation](#milestone-7-fase-1--webhook-receiver--deployment-automation)
 - [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
 - [Manajemen Konfigurasi & Rahasia](#manajemen-konfigurasi-rahasia)
 - [Tata Kelola Platform](#tata-kelola-platform)
@@ -105,7 +106,7 @@ flowchart TD
 | Kategori | Detail |
 |---|---|
 | **Deployment** | Deploy aplikasi hanya dengan beberapa klik, riwayat status per project |
-| **CI/CD Integration** | Deployment token per project + endpoint publik trigger untuk GitHub Actions/GitLab CI |
+| **CI/CD Integration** | Token project/aplikasi, webhook CI/GitHub/GitLab, idempotency, audit, dan notifikasi deployment |
 | **Container Management** | Start, stop, restart, delete, view logs, limit CPU/memory & auto-healing |
 | **Infrastructure UI** | Halaman Servers (CRUD + status exporter Prometheus) & Containers (health, port mapping, CPU/RAM, lifecycle, inspect, resource limit, tab Auto-Healing) |
 | **Configuration & Secrets** | Environment variable per project terenkripsi (Fernet), secret masking, indikator re-deploy, bulk import `.env` |
@@ -412,8 +413,44 @@ punya deployment token sendiri dan endpoint publik yang aman.
 - **RBAC** — hanya pemilik project dengan peran developer/admin yang dapat
   mengelola token; pengguna lain melihat tampilan read-only.
 
+Endpoint `/api/deploy/trigger/<token>` tetap didukung. Milestone 7 Fase 1
+menambahkan receiver webhook native dan scope aplikasi tanpa memutus integrasi
+yang sudah ada.
+
 > Rincian kontrak API, contoh workflow, migrasi, dan bukti pengujian ada di
 > [`docs/milestone-6-phase-3.md`](docs/milestone-6-phase-3.md).
+
+---
+
+## Milestone 7 Fase 1 — Webhook Receiver & Deployment Automation
+
+Integrasi CI/CD ditingkatkan dari sekadar trigger token menjadi receiver
+webhook yang siap dipakai GitHub, GitLab, dan pipeline lain.
+
+- **Token project atau aplikasi** — token baru bisa dibatasi ke satu aplikasi;
+  token lama otomatis berlaku untuk seluruh project. Select cakupan tersedia di
+  tab CI/CD dan batasannya divalidasi di backend.
+- **Webhook native** — `POST /api/v1/deploy/webhook/<token>` memverifikasi
+  HMAC-SHA256 GitHub (`X-Hub-Signature-256`) atau secret GitLab
+  (`X-Gitlab-Token`), membaca repository/branch/commit dari event push, dan
+  menjadwalkan deployment aplikasi yang cocok.
+- **Mode CI sederhana** — request tanpa header native memakai body JSON
+  `application_id`/`branch`/`server_id`. Idempotency memakai
+  `Idempotency-Key`; GitHub/GitLab memakai delivery ID masing-masing.
+- **Anti-retry storm** — event non-push, tanpa target, duplikat, atau target
+  terkunci dibalas `202` dengan `accepted=false`, sehingga provider tidak
+  mengulang event yang tidak relevan.
+- **Audit aman** — action `DEPLOY_WEBHOOK` mencatat sumber, event, repository,
+  branch, commit, delivery, dan deployment terkait; token mentah diredaksi dari
+  path audit.
+- **Notifikasi deployment** — channel alert existing menerima pesan queued,
+  success (`info`), dan failed (`critical`) untuk deployment CI/webhook.
+- **UI lengkap** — cakupan token di tabel, plaintext sekali, snippet curl/GitHub
+  Actions endpoint baru, serta panduan webhook native GitHub/GitLab.
+
+> Rincian kontrak API, matriks status, migrasi, contoh webhook, dan bukti
+> pengujian ada di
+> [`docs/milestone-7-phase-1.md`](docs/milestone-7-phase-1.md).
 
 ---
 
@@ -546,7 +583,8 @@ perintah reproduksi, dan hasil pengujian) ada di
 - [x] Resource limit CPU/memory & auto-healing container (health polling, audit insiden)
 - [x] UI manajemen project & environment variable (secrets manager, bulk import .env)
 - [x] Tata kelola: RBAC (Admin/Developer/Viewer), audit log, personal access token, halaman pengaturan
-- [x] CI/CD: deployment token per project, endpoint trigger publik, riwayat deployment project
+- [x] CI/CD: deployment token per project/aplikasi, endpoint trigger publik, webhook GitHub/GitLab, riwayat deployment project
+- [x] Notifikasi hasil deployment CI/webhook ke channel alert
 - [ ] UI manajemen aplikasi dan deployment
 - [ ] Grafana dashboards & Traefik reverse proxy
 - [ ] Object storage MinIO untuk artefak deployment
