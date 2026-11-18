@@ -17,6 +17,7 @@ import {
   fetchDeployTokens,
   revokeDeployToken,
 } from "@/api/deploy-tokens";
+import { fetchProjectApplications } from "@/api/projects";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -91,7 +92,7 @@ const STATUS_LABEL: Record<ReturnType<typeof tokenStatus>, string> = {
 };
 
 const CURL_SNIPPET = [
-  `curl -fsS -X POST "${API_BASE_URL}/deploy/trigger/<token>" \\`,
+  `curl -fsS -X POST "${API_BASE_URL}/v1/deploy/webhook/<token>" \\`,
   '  -H "Content-Type: application/json" \\',
   `  -d '{"branch":"main"}'`,
 ].join("\n");
@@ -133,6 +134,7 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [expiry, setExpiry] = useState("90");
+  const [applicationScope, setApplicationScope] = useState("all");
   const [created, setCreated] = useState<DeploymentTokenCreated | null>(null);
   const [revoking, setRevoking] = useState<DeploymentToken | null>(null);
   const [feedback, setFeedback] = useState<{
@@ -146,19 +148,31 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
     enabled: canManage,
   });
 
+  const applicationsQuery = useQuery({
+    queryKey: ["project-applications", projectId],
+    queryFn: () => fetchProjectApplications(projectId),
+    enabled: canManage,
+  });
+
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["deploy-tokens", projectId] });
 
   const createMutation = useMutation({
-    mutationFn: (payload: { name: string; expiresInDays?: number }) =>
+    mutationFn: (payload: {
+      name: string;
+      expiresInDays?: number;
+      applicationId?: number;
+    }) =>
       createDeployToken(projectId, {
         name: payload.name,
         expires_in_days: payload.expiresInDays,
+        application_id: payload.applicationId,
       }),
     onSuccess: (token) => {
       setCreated(token);
       setName("");
       setExpiry("90");
+      setApplicationScope("all");
       setFeedback(null);
       void invalidate();
     },
@@ -186,8 +200,19 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
   });
 
   const tokens = tokensQuery.data ?? [];
+  const applications = applicationsQuery.data ?? [];
+  const applicationNames = new Map(
+    applications.map((application) => [application.id, application.name]),
+  );
   const activeTokens = tokens.filter((token) => tokenStatus(token) === "active");
   const canSubmit = name.trim().length > 0 && !createMutation.isPending;
+
+  const scopeLabel = (applicationId: number | null) => {
+    if (applicationId === null) {
+      return "Seluruh project";
+    }
+    return applicationNames.get(applicationId) ?? `Aplikasi #${applicationId}`;
+  };
 
   const copyText = async (text: string, message: string) => {
     try {
@@ -210,8 +235,9 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
             Deployment Token (CI/CD)
           </CardTitle>
           <CardDescription>
-            Token khusus project untuk memicu deployment dari GitHub Actions atau
-            pipeline lain lewat endpoint <code>POST /deploy/trigger/&lt;token&gt;</code>.
+            Token project atau aplikasi untuk memicu deployment dari CI, GitHub, dan
+            GitLab lewat endpoint <code>POST /v1/deploy/webhook/&lt;token&gt;</code>.
+            Pilih cakupan aplikasi agar token hanya bisa men-deploy aplikasi tersebut.
             Token hanya ditampilkan sekali saat dibuat — InfraForge menyimpan hash.
           </CardDescription>
         </CardHeader>
@@ -225,7 +251,7 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
           ) : (
             <>
               <form
-                className="grid gap-3 sm:grid-cols-[1fr_150px_auto] sm:items-end"
+                className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_150px_auto] lg:items-end"
                 onSubmit={(event) => {
                   event.preventDefault();
                   if (!canSubmit) {
@@ -234,6 +260,10 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
                   createMutation.mutate({
                     name: name.trim(),
                     expiresInDays: expiry === "never" ? undefined : Number(expiry),
+                    applicationId:
+                      applicationScope === "all"
+                        ? undefined
+                        : Number(applicationScope),
                   });
                 }}
               >
@@ -247,6 +277,32 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
                     maxLength={100}
                     onChange={(event) => setName(event.target.value)}
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="deploy-token-application">Cakupan aplikasi</Label>
+                  <Select
+                    value={applicationScope}
+                    onValueChange={setApplicationScope}
+                  >
+                    <SelectTrigger
+                      id="deploy-token-application"
+                      data-testid="deploy-token-application"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Seluruh project</SelectItem>
+                      {applications.map((application) => (
+                        <SelectItem
+                          key={application.id}
+                          value={String(application.id)}
+                        >
+                          {application.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-1">
@@ -300,6 +356,7 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
                     <TableHeader>
                       <TableRow>
                         <TableHead>Nama</TableHead>
+                        <TableHead>Cakupan</TableHead>
                         <TableHead>Prefix</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Kedaluwarsa</TableHead>
@@ -313,6 +370,14 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
                         return (
                           <TableRow key={token.id} data-testid="deploy-token-row">
                             <TableCell className="font-medium">{token.name}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                data-testid="deploy-token-scope"
+                              >
+                                {scopeLabel(token.application_id)}
+                              </Badge>
+                            </TableCell>
                             <TableCell>
                               <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
                                 {token.prefix}…
@@ -382,13 +447,21 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
               deployment token project; simpan sebagai secret di repository.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-5">
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">curl</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                CI sederhana / curl
+              </p>
               <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-3 text-xs">
                 <code data-testid="deploy-token-curl-snippet">{CURL_SNIPPET}</code>
               </pre>
+              <p className="text-xs text-muted-foreground">
+                Untuk project dengan lebih dari satu aplikasi, kirim{" "}
+                <code>application_id</code> di body. Token yang sudah dibatasi ke
+                satu aplikasi tidak memerlukannya.
+              </p>
             </div>
+
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">
                 GitHub Actions
@@ -401,11 +474,40 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
               <p className="text-xs text-muted-foreground">
                 Isi secret <code>INFRAFORGE_TRIGGER_URL</code> dengan{" "}
                 <code>
-                  {API_BASE_URL}/deploy/trigger/&lt;token&gt;
+                  {API_BASE_URL}/v1/deploy/webhook/&lt;token&gt;
                 </code>
-                . Project dengan lebih dari satu aplikasi perlu mengirim{" "}
-                <code>application_id</code> di body.
+                .
               </p>
+            </div>
+
+            <div
+              className="space-y-2 rounded-lg border bg-muted/30 p-3"
+              data-testid="deploy-token-webhook-setup"
+            >
+              <p className="text-xs font-semibold">Webhook native GitHub / GitLab</p>
+              <p className="text-xs text-muted-foreground">
+                Payload URL:{" "}
+                <code data-testid="deploy-token-webhook-url">
+                  {API_BASE_URL}/v1/deploy/webhook/&lt;token&gt;
+                </code>
+              </p>
+              <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                <li>
+                  <span className="font-medium text-foreground">GitHub:</span> content
+                  type <code>application/json</code>, secret = deployment token
+                  (signature <code>X-Hub-Signature-256</code>), event{" "}
+                  <code>push</code>.
+                </li>
+                <li>
+                  <span className="font-medium text-foreground">GitLab:</span> secret
+                  token = deployment token (<code>X-Gitlab-Token</code>), trigger{" "}
+                  <code>Push events</code>.
+                </li>
+                <li>
+                  GitHub/GitLab mengirim branch dan commit dari event; deployment
+                  tetap mengambil HEAD branch saat clone.
+                </li>
+              </ul>
             </div>
           </CardContent>
         </Card>
@@ -431,13 +533,22 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
                   {created.token}
                 </code>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Cakupan:{" "}
+                <span
+                  className="font-medium text-foreground"
+                  data-testid="deploy-token-created-scope"
+                >
+                  {scopeLabel(created.application_id)}
+                </span>
+              </p>
               <div className="space-y-1.5">
                 <p className="text-xs font-medium text-muted-foreground">
                   Contoh trigger
                 </p>
                 <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-3 text-xs">
                   <code data-testid="deploy-token-created-curl">
-                    {`curl -fsS -X POST "${API_BASE_URL}/deploy/trigger/${created.token}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"branch":"main"}'`}
+                    {`curl -fsS -X POST "${API_BASE_URL}/v1/deploy/webhook/${created.token}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"branch":"main"}'`}
                   </code>
                 </pre>
               </div>

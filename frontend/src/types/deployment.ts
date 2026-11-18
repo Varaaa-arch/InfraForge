@@ -31,6 +31,7 @@ export interface DeploymentQuery {
 export interface DeploymentToken {
   id: number;
   project_id: number;
+  application_id: number | null;
   name: string;
   prefix: string;
   last_used_at: string | null;
@@ -46,4 +47,5 @@ export interface DeploymentTokenCreated extends DeploymentToken {
 export interface DeploymentTokenCreate {
   name: string;
   expires_in_days?: number;
+  application_id?: number;
 }
