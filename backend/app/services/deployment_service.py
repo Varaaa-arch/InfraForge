@@ -180,6 +180,9 @@ def trigger_deployment(
     application_id: int,
     server_id: int,
     branch_override: str | None = None,
+    *,
+    tag: str | None = None,
+    triggered_by: str | None = None,
 ) -> Deployment:
     """
     Trigger deployment baru (synchronous — untuk API manual trigger).
@@ -218,7 +221,12 @@ def trigger_deployment(
         )
 
     deployment, app, server = create_deployment_record(
-        db, application_id, server_id, branch_override
+        db,
+        application_id,
+        server_id,
+        branch_override,
+        tag=tag,
+        triggered_by=triggered_by,
     )
 
     # Acquire lock setelah record dibuat (deployment_id sudah tersedia)
@@ -259,6 +267,8 @@ def create_deployment_record(
     branch_override: str | None = None,
     *,
     trigger_source: str = TriggerSource.manual.value,
+    tag: str | None = None,
+    triggered_by: str | None = None,
 ) -> tuple[Deployment, Application, Server]:
     """
     Validasi aplikasi dan server, lalu buat record Deployment (status=pending).
@@ -268,6 +278,8 @@ def create_deployment_record(
 
     Args:
         trigger_source: Pemicu deployment (manual/github_webhook/ci_token).
+        tag:            Git tag target (opsional).
+        triggered_by:   Identitas pemicu (username/token/webhook).
 
     Returns:
         Tuple (deployment, application, server) — siap dipakai oleh _run_deployment.
@@ -290,6 +302,8 @@ def create_deployment_record(
         server_id,
         branch,
         trigger_source=trigger_source,
+        tag=tag,
+        triggered_by=triggered_by,
     )
     return deployment, app, server
 

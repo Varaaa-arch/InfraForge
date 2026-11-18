@@ -11,6 +11,10 @@ Kolom rollback:
                          dipakai oleh rollback untuk re-deploy konfigurasi lama.
   - is_rollback        : True jika deployment ini adalah hasil operasi rollback.
 
+Metadata versi:
+  - tag            : Git tag yang menunjuk tepat ke commit deployment, jika ada.
+  - triggered_by   : Identitas pemicu (username, deploy-token:<nama>, webhook).
+
 Relasi:
   - application_id → FK ke tabel applications (CASCADE delete)
   - server_id      → FK ke tabel servers (SET NULL saat server dihapus, agar
@@ -89,6 +93,18 @@ class Deployment(Base):
         String(40),
         nullable=True,
         comment="Commit SHA hasil clone (diisi setelah clone selesai)",
+    )
+    tag: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Git tag yang menunjuk tepat ke commit deployment, jika ada",
+    )
+    triggered_by: Mapped[str | None] = mapped_column(
+        String(160),
+        nullable=True,
+        comment=(
+            "Identitas pemicu: username, deploy-token:<nama>, atau webhook"
+        ),
     )
     log_path: Mapped[str | None] = mapped_column(
         Text,

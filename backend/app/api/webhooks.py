@@ -137,6 +137,13 @@ async def github_webhook(
         from app.repositories import server_repository
         from app.services import deployment_service, project_service
 
+        pusher = payload.get("pusher")
+        pusher_name = pusher.get("name") if isinstance(pusher, dict) else None
+        triggered_by = (
+            f"github:{pusher_name}" if isinstance(pusher_name, str) and pusher_name
+            else "github-webhook"
+        )
+
         deployment_ids: list[int] = []
         skipped_locked: list[int] = []  # app_id yang sedang deploying
 
@@ -171,6 +178,7 @@ async def github_webhook(
                     server_id,
                     branch_override=branch,
                     trigger_source=TriggerSource.github_webhook.value,
+                    triggered_by=triggered_by,
                 )
 
                 # Mark delivery sebagai processed (idempotency)

@@ -321,6 +321,7 @@ def trigger_applications(
     server: Server,
     *,
     branch: str | None,
+    tag: str | None = None,
 ) -> list[ScheduledDeployment]:
     """Buat deployment record untuk setiap aplikasi target."""
     scheduled: list[ScheduledDeployment] = []
@@ -331,6 +332,7 @@ def trigger_applications(
             application,
             server,
             branch=branch,
+            tag=tag,
         )
         scheduled.append(
             ScheduledDeployment(

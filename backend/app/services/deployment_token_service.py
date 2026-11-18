@@ -223,6 +223,7 @@ def trigger_deployment(
     server: Server,
     *,
     branch: str | None = None,
+    tag: str | None = None,
 ) -> Deployment:
     """Buat deployment record (status pending) dari trigger token CI/CD."""
     deployment, _app, _server = deployment_service.create_deployment_record(
@@ -231,6 +232,8 @@ def trigger_deployment(
         server.id,
         branch_override=branch,
         trigger_source=TriggerSource.ci_token.value,
+        tag=tag,
+        triggered_by=f"deploy-token:{token.name}",
     )
     touch_last_used(db, token)
     return deployment

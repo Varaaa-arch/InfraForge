@@ -472,6 +472,8 @@ class TestTriggerDeploymentConcurrencyGuard:
             mock_dep.rollback_of = None
             mock_dep.compose_path_snapshot = None
             mock_dep.trigger_source = "manual"
+            mock_dep.tag = None
+            mock_dep.triggered_by = None
 
             mock_app_obj = MagicMock(spec=Application)
             mock_app_obj.status = AppStatus.idle

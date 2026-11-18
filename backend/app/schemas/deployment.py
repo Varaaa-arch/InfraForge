@@ -35,6 +35,15 @@ class DeploymentCreate(BaseModel):
             "Jika kosong, gunakan branch default dari konfigurasi aplikasi."
         ),
     )
+    tag: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "Opsional: deploy Git tag tertentu. Jika diisi, checkout memakai "
+            "tag ini dan branch hanya menjadi metadata."
+        ),
+    )
 
 
 class DeploymentResponse(BaseModel):
@@ -58,6 +67,14 @@ class DeploymentResponse(BaseModel):
         description="Pemicu deployment: manual | github_webhook | ci_token.",
     )
     commit_sha: str | None
+    tag: str | None = Field(
+        default=None,
+        description="Git tag yang menunjuk tepat ke commit deployment, jika ada.",
+    )
+    triggered_by: str | None = Field(
+        default=None,
+        description="Username, deploy-token:<nama>, atau identitas webhook pemicu.",
+    )
     log_path: str | None
     started_at: datetime
     finished_at: datetime | None

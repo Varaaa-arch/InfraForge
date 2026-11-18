@@ -234,6 +234,7 @@ def trigger_deployment_by_token(
         application,
         server,
         branch=body.branch,
+        tag=body.tag,
     )
 
     request.state.audit_username = f"deploy-token:{record.name}"
@@ -262,6 +263,7 @@ def trigger_deployment_by_token(
             application_id=application.id,
             application_name=application.name,
             branch=deployment.branch,
+            tag=deployment.tag,
             status=deployment.status,
             message=f"Deployment #{deployment.id} dijadwalkan",
         )
@@ -314,6 +316,7 @@ def _webhook_response(
             application_id=item.application.id,
             application_name=item.application.name,
             branch=item.deployment.branch,
+            tag=item.deployment.tag,
             status=item.deployment.status,
         )
         for item in scheduled
@@ -485,6 +488,7 @@ async def deployment_webhook(
         active,
         server,
         branch=parsed.branch,
+        tag=parsed.request.tag if parsed.request else None,
     )
 
     if not scheduled:

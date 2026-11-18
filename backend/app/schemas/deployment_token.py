@@ -68,6 +68,12 @@ class DeploymentTriggerRequest(BaseModel):
         max_length=100,
         description="Override branch yang di-deploy (default: branch aplikasi)",
     )
+    tag: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="Opsional: deploy Git tag tertentu alih-alih branch HEAD",
+    )
     server_id: int | None = Field(
         default=None,
         description=(
@@ -83,6 +89,7 @@ class DeploymentTriggerResponse(BaseModel):
     application_id: int
     application_name: str
     branch: str
+    tag: str | None = None
     status: DeploymentStatus
     message: str
 
@@ -94,6 +101,7 @@ class DeploymentScheduledItem(BaseModel):
     application_id: int
     application_name: str
     branch: str
+    tag: str | None = None
     status: DeploymentStatus
 
 

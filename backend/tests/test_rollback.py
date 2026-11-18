@@ -197,6 +197,8 @@ class TestDeploymentResponseRollbackFields:
         dep.rollback_of = None
         dep.compose_path_snapshot = None
         dep.trigger_source = "manual"
+        dep.tag = None
+        dep.triggered_by = None
         for k, v in kwargs.items():
             setattr(dep, k, v)
         return dep
@@ -382,6 +384,8 @@ class TestRollbackEndpoint:
         mock_rb.rollback_of = dep_id
         mock_rb.compose_path_snapshot = "docker-compose.yml"
         mock_rb.trigger_source = "manual"
+        mock_rb.tag = None
+        mock_rb.triggered_by = "rb_user"
 
         with patch(
             "app.services.deployment_service.rollback_deployment",

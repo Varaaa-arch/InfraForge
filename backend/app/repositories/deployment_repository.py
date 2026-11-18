@@ -101,6 +101,8 @@ def create(
     compose_path_snapshot: str | None = None,
     is_rollback: bool = False,
     trigger_source: str = TriggerSource.manual.value,
+    tag: str | None = None,
+    triggered_by: str | None = None,
 ) -> Deployment:
     """
     Buat entri deployment baru dengan status `pending`.
@@ -111,6 +113,8 @@ def create(
         compose_path_snapshot: Snapshot compose path dari deployment target rollback.
         is_rollback:           True jika ini adalah operasi rollback.
         trigger_source:        Pemicu deployment (manual/github_webhook/ci_token).
+        tag:                   Git tag target (opsional).
+        triggered_by:          Identitas pemicu (username/token/webhook).
 
     Commit dan refresh dilakukan di sini.
     """
@@ -123,6 +127,8 @@ def create(
         compose_path_snapshot=compose_path_snapshot,
         is_rollback=is_rollback,
         trigger_source=trigger_source,
+        tag=tag,
+        triggered_by=triggered_by,
     )
     db.add(deployment)
     db.commit()
@@ -202,11 +208,13 @@ def update_status(
     commit_sha: str | None = None,
     log_path: str | None = None,
     compose_path_snapshot: str | None = None,
+    tag: str | None = None,
 ) -> Deployment:
     """
     Update status deployment.
 
-    - `commit_sha`, `log_path`, `compose_path_snapshot` diupdate jika diberikan.
+    - `commit_sha`, `log_path`, `compose_path_snapshot`, `tag` diupdate jika
+      diberikan.
     - `finished_at` diisi otomatis saat status terminal (success / failed).
     - `compose_path_snapshot` disimpan saat status success agar bisa di-rollback.
     """
@@ -217,6 +225,8 @@ def update_status(
         deployment.log_path = log_path
     if compose_path_snapshot is not None:
         deployment.compose_path_snapshot = compose_path_snapshot
+    if tag is not None:
+        deployment.tag = tag
     if status in (DeploymentStatus.success, DeploymentStatus.failed):
         deployment.finished_at = datetime.now(tz=timezone.utc)
     db.commit()

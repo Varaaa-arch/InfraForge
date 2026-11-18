@@ -84,6 +84,8 @@ def trigger_deployment(
             application_id=payload.application_id,
             server_id=payload.server_id,
             branch_override=payload.branch,
+            tag=payload.tag,
+            triggered_by=current_user.username,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
