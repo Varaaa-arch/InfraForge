@@ -537,3 +537,80 @@ def test_trigger_audit_event_uses_token_name_and_id(
     assert events[0].path == "/deploy/trigger/[redacted]"
     assert invalid_token not in events[0].path
     assert invalid_token not in str(events[0].details)
+
+
+# ---------------------------------------------------------------------------
+# Scope aplikasi
+# ---------------------------------------------------------------------------
+
+def test_create_application_scoped_token(
+    client: TestClient, db_session: Session
+) -> None:
+    _user, headers, project_id, _server_id, app = _setup_deployable(
+        client, db_session
+    )
+    data = _create_token(
+        client, headers, project_id, application_id=app["id"], name="app token"
+    )
+
+    assert data["project_id"] == project_id
+    assert data["application_id"] == app["id"]
+
+    listing = client.get(
+        f"/projects/{project_id}/deploy-tokens", headers=headers
+    ).json()["data"]
+    assert listing[0]["application_id"] == app["id"]
+
+
+def test_create_token_rejects_foreign_application(
+    client: TestClient, db_session: Session
+) -> None:
+    _user, headers, project_id, _server_id, _app = _setup_deployable(
+        client, db_session
+    )
+    other_project = _create_project(client, headers)
+    foreign_app = _create_application(client, headers, other_project)
+
+    response = client.post(
+        f"/projects/{project_id}/deploy-tokens",
+        json={"name": "foreign", "application_id": foreign_app["id"]},
+        headers=headers,
+    )
+    assert response.status_code == 422
+    assert "tidak ditemukan" in response.json()["message"]
+
+
+def test_application_scoped_token_locks_target(
+    client: TestClient, db_session: Session, queue_mocks: tuple[object, object]
+) -> None:
+    _user, headers, project_id, _server_id, first = _setup_deployable(
+        client, db_session
+    )
+    _create_application(client, headers, project_id, name="worker")
+    data = _create_token(
+        client, headers, project_id, application_id=first["id"]
+    )
+
+    response = _trigger(client, data["token"])
+    assert response.status_code == 202, response.text
+    body = response.json()["data"]
+    assert body["application_id"] == first["id"]
+    assert body["application_name"] == first["name"]
+
+
+def test_application_scoped_token_rejects_body_override(
+    client: TestClient, db_session: Session, queue_mocks: tuple[object, object]
+) -> None:
+    _user, headers, project_id, _server_id, first = _setup_deployable(
+        client, db_session
+    )
+    second = _create_application(client, headers, project_id, name="worker")
+    data = _create_token(
+        client, headers, project_id, application_id=first["id"]
+    )
+
+    response = _trigger(
+        client, data["token"], {"application_id": second["id"]}
+    )
+    assert response.status_code == 422
+    assert "hanya berlaku" in response.json()["message"]

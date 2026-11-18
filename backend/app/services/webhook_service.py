@@ -26,7 +26,7 @@ from app.repositories import application_repository
 
 def verify_signature(raw_body: bytes, signature_header: str | None) -> bool:
     """
-    Verifikasi GitHub webhook signature menggunakan HMAC SHA-256.
+    Verifikasi GitHub webhook signature menggunakan HMAC SHA-256 global.
 
     GitHub mengirim header:
         X-Hub-Signature-256: sha256=<hex_digest>
@@ -45,24 +45,32 @@ def verify_signature(raw_body: bytes, signature_header: str | None) -> bool:
         # Jika secret tidak dikonfigurasi, tolak semua webhook (fail-closed).
         return False
 
-    if not signature_header:
+    return verify_signature_with_secret(raw_body, signature_header, secret)
+
+
+def verify_signature_with_secret(
+    raw_body: bytes, signature_header: str | None, secret: str
+) -> bool:
+    """Verifikasi signature GitHub dengan secret eksplisit (token deployment).
+
+    Dipakai endpoint webhook per-project yang memakai deployment token sebagai
+    shared secret. Menggunakan constant-time comparison.
+    """
+    if not secret or not signature_header:
         return False
 
-    # Format: "sha256=<hex>"
     expected_prefix = "sha256="
     if not signature_header.startswith(expected_prefix):
         return False
 
     received_hash = signature_header[len(expected_prefix):]
 
-    # Hitung HMAC SHA-256 dari raw body
     computed = hmac.new(
         key=secret.encode("utf-8"),
         msg=raw_body,
         digestmod=hashlib.sha256,
     ).hexdigest()
 
-    # Constant-time comparison untuk mencegah timing attack
     return hmac.compare_digest(computed, received_hash)
 
 
@@ -116,6 +124,11 @@ def find_matching_applications(
             matching.append(app)
 
     return matching
+
+
+def normalize_repo_url(url: str) -> str:
+    """Normalisasi URL repository (lihat :func:`_normalize_repo_url`)."""
+    return _normalize_repo_url(url)
 
 
 def _normalize_repo_url(url: str) -> str:

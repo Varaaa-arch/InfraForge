@@ -53,9 +53,10 @@ tags_metadata = [
     {
         "name": "deploy-tokens",
         "description": (
-            "Deployment token CI/CD per project. Token plaintext hanya tampil "
-            "sekali saat dibuat; database menyimpan hash SHA-256. Token dipakai "
-            "endpoint publik `/deploy/trigger/{token}`."
+            "Deployment token CI/CD per project atau per aplikasi. Token "
+            "plaintext hanya tampil sekali saat dibuat; database menyimpan hash "
+            "SHA-256. Token dipakai endpoint publik `/deploy/trigger/{token}` "
+            "dan `/v1/deploy/webhook/{token}`."
         ),
     },
     {
@@ -64,6 +65,14 @@ tags_metadata = [
             "Endpoint publik trigger deployment untuk GitHub Actions/webhook. "
             "Autentikasi memakai deployment token project (`dt_...`); deployment "
             "dijalankan di background dan langsung mengembalikan 202."
+        ),
+    },
+    {
+        "name": "deploy-webhook",
+        "description": (
+            "Webhook receiver per-project: mendukung panggilan CI sederhana, "
+            "webhook native GitHub (HMAC) dan GitLab (secret token), lalu "
+            "menjadwalkan deployment di background."
         ),
     },
     {
@@ -197,6 +206,7 @@ app.include_router(audit_logs.router)
 app.include_router(api_tokens.router)
 app.include_router(deploy_tokens.router)
 app.include_router(deploy_tokens.public_router)
+app.include_router(deploy_tokens.webhook_router)
 app.include_router(projects.router)
 app.include_router(dashboard.router)
 app.include_router(servers.router)

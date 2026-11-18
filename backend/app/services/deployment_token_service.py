@@ -20,6 +20,7 @@ from app.models.deployment_token import DeploymentToken
 from app.models.project import Project
 from app.models.server import Server
 from app.repositories import (
+    application_repository,
     deployment_token_repository,
     server_repository,
 )
@@ -44,8 +45,22 @@ def create_token(
     created_by: int | None,
     name: str,
     expires_in_days: int | None = None,
+    application_id: int | None = None,
 ) -> tuple[DeploymentToken, str]:
-    """Buat token baru dan kembalikan ``(record, token_plaintext)``."""
+    """Buat token baru dan kembalikan ``(record, token_plaintext)``.
+
+    Raises:
+        ValueError: ``application_id`` tidak ditemukan pada project.
+    """
+    if application_id is not None:
+        application = application_repository.get_by_id_and_project(
+            db, application_id, project_id
+        )
+        if application is None:
+            raise ValueError(
+                f"Application {application_id} tidak ditemukan pada project ini"
+            )
+
     token_prefix = secrets.token_hex(4)
     secret = secrets.token_hex(32)
     token = f"{TOKEN_PREFIX}{token_prefix}_{secret}"
@@ -59,6 +74,7 @@ def create_token(
     record = deployment_token_repository.create(
         db,
         project_id=project_id,
+        application_id=application_id,
         created_by=created_by,
         name=name,
         token_hash=hash_token(token),
@@ -136,7 +152,7 @@ def _resolve_application(
     return applications[0]
 
 
-def _resolve_server(
+def resolve_server(
     db: Session, owner_id: int, server_id: int | None
 ) -> Server:
     """Pilih server target: body override (harus milik owner) atau server pertama."""
@@ -152,6 +168,18 @@ def _resolve_server(
     return servers[0]
 
 
+def _resolve_scoped_application(
+    db: Session, project_id: int, application_id: int
+) -> Application:
+    """Ambil aplikasi yang dikunci oleh token dan pastikan masih milik project."""
+    application = application_repository.get_by_id_and_project(
+        db, application_id, project_id
+    )
+    if application is None:
+        raise ValueError("Aplikasi yang terikat pada token tidak ditemukan")
+    return application
+
+
 def resolve_target(
     db: Session,
     token: DeploymentToken,
@@ -161,6 +189,10 @@ def resolve_target(
 ) -> tuple[Project, Application, Server]:
     """Resolusi project, aplikasi, dan server target untuk sebuah token.
 
+    Token aplikasi mengunci target; body ``application_id`` yang berbeda
+    ditolak. Token project-wide mengikuti aturan lama (wajib eksplisit bila
+    project punya lebih dari satu aplikasi).
+
     Raises:
         ValueError: project/aplikasi/server tidak ditemukan atau ambigu.
     """
@@ -168,8 +200,19 @@ def resolve_target(
     if project is None:
         raise ValueError("Project dari token tidak ditemukan")
 
-    application = _resolve_application(db, project.id, application_id)
-    server = _resolve_server(db, project.owner_id, server_id)
+    if token.application_id is not None:
+        application = _resolve_scoped_application(
+            db, project.id, token.application_id
+        )
+        if application_id is not None and application_id != token.application_id:
+            raise ValueError(
+                "Token ini hanya berlaku untuk application "
+                f"{token.application_id}"
+            )
+    else:
+        application = _resolve_application(db, project.id, application_id)
+
+    server = resolve_server(db, project.owner_id, server_id)
     return project, application, server
 
 

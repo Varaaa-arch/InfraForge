@@ -154,6 +154,12 @@ AUDIT_RULES: tuple[AuditRule, ...] = (
         "deploy_token",
     ),
     _rule("POST", r"/deploy/trigger/[^/]+", "DEPLOY_TRIGGER", "deploy_token"),
+    _rule(
+        "POST",
+        r"/v1/deploy/webhook/[^/]+",
+        "DEPLOY_WEBHOOK",
+        "deploy_token",
+    ),
     # Alert channel
     _rule("POST", r"/alert-channels", "ALERT_CHANNEL_CREATE", "alert_channel"),
     _rule(

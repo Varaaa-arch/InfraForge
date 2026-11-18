@@ -28,6 +28,12 @@ class DeploymentToken(Base):
         index=True,
         comment="Project yang boleh di-deploy dengan token ini",
     )
+    application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="NULL = token project-wide; terisi = token hanya untuk aplikasi ini",
+    )
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,

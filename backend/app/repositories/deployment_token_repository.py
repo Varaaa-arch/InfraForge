@@ -56,10 +56,12 @@ def create(
     token_hash: str,
     prefix: str,
     expires_at: datetime | None,
+    application_id: int | None = None,
 ) -> DeploymentToken:
     """Buat token deployment baru. Commit dan refresh dilakukan di sini."""
     token = DeploymentToken(
         project_id=project_id,
+        application_id=application_id,
         created_by=created_by,
         name=name,
         token_hash=token_hash,

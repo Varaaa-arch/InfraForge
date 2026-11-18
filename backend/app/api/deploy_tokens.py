@@ -22,9 +22,12 @@ from app.api.deps import get_current_user
 from app.core.permissions import require_permission
 from app.core.roles import Permission
 from app.database.session import get_db
+from app.models.deployment_token import DeploymentToken
 from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.deployment_token import (
+    DeployWebhookResponse,
+    DeploymentScheduledItem,
     DeploymentTokenCreate,
     DeploymentTokenCreated,
     DeploymentTokenResponse,
@@ -32,13 +35,19 @@ from app.schemas.deployment_token import (
     DeploymentTriggerResponse,
 )
 from app.schemas.response import ApiResponse
-from app.services import deployment_queue, deployment_token_service, project_service
+from app.services import (
+    deployment_queue,
+    deployment_token_service,
+    deployment_webhook_service,
+    project_service,
+)
 
 router = APIRouter(
     prefix="/projects/{project_id}/deploy-tokens",
     tags=["deploy-tokens"],
 )
 public_router = APIRouter(prefix="/deploy", tags=["deploy-trigger"])
+webhook_router = APIRouter(prefix="/v1/deploy", tags=["deploy-webhook"])
 
 
 # ---------------------------------------------------------------------------
@@ -84,13 +93,17 @@ def create_deploy_token(
 ) -> ApiResponse[DeploymentTokenCreated]:
     _require_owned_project(project_id, current_user, db)
 
-    record, token = deployment_token_service.create_token(
-        db,
-        project_id=project_id,
-        created_by=current_user.id,
-        name=payload.name,
-        expires_in_days=payload.expires_in_days,
-    )
+    try:
+        record, token = deployment_token_service.create_token(
+            db,
+            project_id=project_id,
+            created_by=current_user.id,
+            name=payload.name,
+            expires_in_days=payload.expires_in_days,
+            application_id=payload.application_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
 
     base = DeploymentTokenResponse.model_validate(record)
     return ApiResponse(data=DeploymentTokenCreated(**base.model_dump(), token=token))
@@ -225,6 +238,8 @@ def trigger_deployment_by_token(
     request.state.audit_username = f"deploy-token:{record.name}"
     request.state.audit_resource_id = str(record.id)
     request.state.audit_details = {
+        "source": "ci",
+        "outcome": "scheduled",
         "application_id": str(application.id),
         "branch": deployment.branch,
     }
@@ -245,4 +260,279 @@ def trigger_deployment_by_token(
             status=deployment.status,
             message=f"Deployment #{deployment.id} dijadwalkan",
         )
+    )
+
+
+# ---------------------------------------------------------------------------
+# Endpoint publik: webhook receiver per-project (GitHub/GitLab/CI)
+# ---------------------------------------------------------------------------
+
+def _audit_webhook(
+    request: Request,
+    record: DeploymentToken | None,
+    source: str,
+    outcome: str,
+    parsed: deployment_webhook_service.ParsedWebhook | None = None,
+    **extra: object,
+) -> None:
+    """Isi state audit middleware tanpa pernah menyertakan token mentah."""
+    request.state.audit_path = "/v1/deploy/webhook/[redacted]"
+    if record is not None:
+        request.state.audit_username = f"deploy-token:{record.name}"
+        request.state.audit_resource_id = str(record.id)
+
+    details: dict[str, str] = {"source": source}
+    if parsed is not None:
+        details.update(deployment_webhook_service.audit_details(parsed))
+    details["outcome"] = outcome
+    for key, value in extra.items():
+        if value is None:
+            continue
+        details[key] = str(value)
+    request.state.audit_details = details
+
+
+def _webhook_response(
+    *,
+    accepted: bool,
+    message: str,
+    parsed: deployment_webhook_service.ParsedWebhook,
+    scheduled: list[deployment_webhook_service.ScheduledDeployment] | None = None,
+    skipped: list[int] | None = None,
+    deployment_ids: list[int] | None = None,
+    branch: str | None = None,
+) -> ApiResponse[DeployWebhookResponse]:
+    scheduled = scheduled or []
+    items = [
+        DeploymentScheduledItem(
+            deployment_id=item.deployment.id,
+            application_id=item.application.id,
+            application_name=item.application.name,
+            branch=item.deployment.branch,
+            status=item.deployment.status,
+        )
+        for item in scheduled
+    ]
+    ids = (
+        deployment_ids
+        if deployment_ids is not None
+        else [item.deployment.id for item in scheduled]
+    )
+    return ApiResponse(
+        data=DeployWebhookResponse(
+            accepted=accepted,
+            message=message,
+            source=parsed.source,
+            event=parsed.event,
+            branch=branch or parsed.branch,
+            deployment_ids=ids,
+            deployments=items,
+            skipped_application_ids=skipped or [],
+        )
+    )
+
+
+@webhook_router.post(
+    "/webhook/{token}",
+    response_model=ApiResponse[DeployWebhookResponse],
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Webhook receiver deployment per-project",
+    description=(
+        "Endpoint publik untuk GitHub Actions, GitLab CI, atau webhook native "
+        "GitHub/GitLab. Autentikasi memakai deployment token project pada path.\n\n"
+        "- **GitHub native**: kirim `X-GitHub-Event` + `X-Hub-Signature-256`; "
+        "secret webhook = token deployment.\n"
+        "- **GitLab native**: kirim `X-Gitlab-Event` + `X-Gitlab-Token`; "
+        "secret token = token deployment.\n"
+        "- **CI sederhana**: tanpa header event, body opsional "
+        "`{application_id, branch, server_id}`.\n\n"
+        "Deployment dijalankan di background; response 202 berisi daftar "
+        "`deployment_ids`."
+    ),
+    responses={
+        202: {"description": "Event diterima/diabaikan tanpa retry"},
+        400: {"description": "Payload bukan JSON yang valid"},
+        401: {"description": "Signature GitHub / secret GitLab tidak valid"},
+        404: {"description": "Token tidak valid, sudah dicabut, atau kedaluwarsa"},
+        409: {"description": "Aplikasi target sedang deploy (mode CI sederhana)"},
+        422: {"description": "Target CI sederhana ambigu atau tidak ditemukan"},
+    },
+)
+async def deployment_webhook(
+    token: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> ApiResponse[DeployWebhookResponse]:
+    request.state.audit_path = "/v1/deploy/webhook/[redacted]"
+    source = deployment_webhook_service.detect_source(request.headers)
+
+    record = deployment_token_service.find_active_by_token(db, token)
+    if record is None:
+        _audit_webhook(request, None, source, "invalid_token")
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Token deployment tidak valid, sudah dicabut, atau kedaluwarsa",
+        )
+
+    request.state.audit_username = f"deploy-token:{record.name}"
+    request.state.audit_resource_id = str(record.id)
+
+    raw_body = await request.body()
+    try:
+        parsed = deployment_webhook_service.parse_webhook_request(
+            request.headers, raw_body, token
+        )
+    except deployment_webhook_service.InvalidWebhookSignature as exc:
+        _audit_webhook(request, record, source, "invalid_signature")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(exc))
+    except deployment_webhook_service.InvalidWebhookPayload as exc:
+        _audit_webhook(request, record, source, "invalid_payload")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+
+    if parsed.delivery_id:
+        existing_id = deployment_queue.is_duplicate_delivery(parsed.delivery_id)
+        if existing_id is not None:
+            _audit_webhook(
+                request,
+                record,
+                parsed.source,
+                "duplicate",
+                parsed,
+                deployment_ids=existing_id,
+            )
+            return _webhook_response(
+                accepted=False,
+                message=f"Delivery {parsed.delivery_id} sudah pernah diproses",
+                parsed=parsed,
+                deployment_ids=[existing_id],
+            )
+
+    if parsed.event is not None and parsed.event.lower() != "push":
+        _audit_webhook(request, record, parsed.source, "ignored_event", parsed)
+        return _webhook_response(
+            accepted=False,
+            message=f"Event '{parsed.event}' tidak diproses (hanya push)",
+            parsed=parsed,
+        )
+
+    try:
+        _project, server, applications = (
+            deployment_webhook_service.resolve_applications(db, record, parsed)
+        )
+    except ValueError as exc:
+        if parsed.source == "ci":
+            _audit_webhook(request, record, parsed.source, "invalid_target", parsed)
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        _audit_webhook(request, record, parsed.source, "no_target", parsed)
+        return _webhook_response(
+            accepted=False,
+            message=str(exc),
+            parsed=parsed,
+        )
+
+    if not applications:
+        _audit_webhook(request, record, parsed.source, "no_match", parsed)
+        reason = (
+            "Ref event bukan branch push"
+            if parsed.branch is None
+            else (
+                "Tidak ada aplikasi yang cocok untuk repository/branch "
+                "pada event ini"
+            )
+        )
+        return _webhook_response(
+            accepted=False,
+            message=reason,
+            parsed=parsed,
+        )
+
+    skipped: list[int] = []
+    for application in applications:
+        running_id = deployment_queue.get_running_deployment_id(application.id)
+        if running_id is None:
+            continue
+        if parsed.source == "ci":
+            _audit_webhook(
+                request,
+                record,
+                parsed.source,
+                "conflict",
+                parsed,
+                application_ids=application.id,
+                running_deployment_id=running_id,
+            )
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                (
+                    f"Aplikasi {application.id} sedang dalam proses deployment "
+                    f"(deployment_id={running_id}). Tunggu hingga selesai."
+                ),
+            )
+        skipped.append(application.id)
+
+    active = [
+        application for application in applications if application.id not in skipped
+    ]
+    scheduled = deployment_webhook_service.trigger_applications(
+        db,
+        record,
+        active,
+        server,
+        branch=parsed.branch,
+    )
+
+    if not scheduled:
+        _audit_webhook(
+            request,
+            record,
+            parsed.source,
+            "locked",
+            parsed,
+            application_ids=",".join(str(item) for item in skipped),
+        )
+        return _webhook_response(
+            accepted=False,
+            message="Semua aplikasi target sedang dalam proses deployment",
+            parsed=parsed,
+            skipped=skipped,
+        )
+
+    if parsed.delivery_id:
+        deployment_queue.mark_delivery_processed(
+            parsed.delivery_id, scheduled[0].deployment.id
+        )
+
+    deployment_ids = [item.deployment.id for item in scheduled]
+    application_ids = [item.application.id for item in scheduled]
+    _audit_webhook(
+        request,
+        record,
+        parsed.source,
+        "scheduled" if not skipped else "partial",
+        parsed,
+        application_ids=",".join(str(item) for item in application_ids),
+        deployment_ids=",".join(str(item) for item in deployment_ids),
+        skipped_application_ids=",".join(str(item) for item in skipped) or None,
+        branch=scheduled[0].deployment.branch,
+    )
+
+    for item in scheduled:
+        background_tasks.add_task(
+            deployment_queue.run_deployment_background,
+            deployment_id=item.deployment.id,
+            application_id=item.application.id,
+            server_id=item.server.id,
+        )
+
+    message = f"{len(scheduled)} deployment dijadwalkan"
+    if skipped:
+        message += f"; {len(skipped)} aplikasi di-skip karena sedang deploy"
+    return _webhook_response(
+        accepted=True,
+        message=message,
+        parsed=parsed,
+        scheduled=scheduled,
+        skipped=skipped,
+        branch=scheduled[0].deployment.branch,
     )

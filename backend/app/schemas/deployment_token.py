@@ -21,6 +21,13 @@ class DeploymentTokenCreate(BaseModel):
         le=365,
         description="Masa berlaku token dalam hari (kosong = tanpa kedaluwarsa)",
     )
+    application_id: int | None = Field(
+        default=None,
+        description=(
+            "ID aplikasi dalam project. Kosong = token berlaku untuk seluruh "
+            "project; terisi = token hanya untuk aplikasi tersebut."
+        ),
+    )
 
 
 class DeploymentTokenResponse(BaseModel):
@@ -30,6 +37,7 @@ class DeploymentTokenResponse(BaseModel):
 
     id: int
     project_id: int
+    application_id: int | None
     name: str
     prefix: str
     last_used_at: datetime | None
@@ -77,3 +85,26 @@ class DeploymentTriggerResponse(BaseModel):
     branch: str
     status: DeploymentStatus
     message: str
+
+
+class DeploymentScheduledItem(BaseModel):
+    """Satu deployment yang berhasil dijadwalkan dari event webhook."""
+
+    deployment_id: int
+    application_id: int
+    application_name: str
+    branch: str
+    status: DeploymentStatus
+
+
+class DeployWebhookResponse(BaseModel):
+    """Ringkasan penerimaan webhook deployment (CI/GitHub/GitLab)."""
+
+    accepted: bool
+    message: str
+    source: str = Field(description="github | gitlab | ci")
+    event: str | None = Field(default=None, description="Contoh: push")
+    branch: str | None = None
+    deployment_ids: list[int] = Field(default_factory=list)
+    deployments: list[DeploymentScheduledItem] = Field(default_factory=list)
+    skipped_application_ids: list[int] = Field(default_factory=list)
