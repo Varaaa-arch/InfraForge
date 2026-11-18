@@ -31,6 +31,7 @@ from loguru import logger
 from app.config import settings
 from app.database.redis_client import redis_client
 from app.database.session import SessionLocal
+from app.models.deployment import Deployment, TriggerSource
 from app.services import deployment_service
 
 
@@ -132,6 +133,18 @@ def is_locked_by_db_status(application_id: int) -> bool:
 # Background task
 # ---------------------------------------------------------------------------
 
+def _notify_finished(deployment: Deployment) -> None:
+    """Kirim notifikasi hasil hanya untuk deployment CI/webhook."""
+    if deployment.trigger_source not in (
+        TriggerSource.ci_token.value,
+        TriggerSource.github_webhook.value,
+    ):
+        return
+    from app.services import deployment_notification_service
+
+    deployment_notification_service.notify_finished(deployment.id)
+
+
 def run_deployment_background(
     deployment_id: int,
     application_id: int,
@@ -171,6 +184,7 @@ def run_deployment_background(
             dep = deployment_repository.get_by_id(db, deployment_id)
             if dep is not None:
                 deployment_repository.update_status(db, dep, DeploymentStatus.failed)
+                _notify_finished(dep)
         return
 
     try:
@@ -196,6 +210,7 @@ def run_deployment_background(
                     f"Application {application_id} atau server {server_id} tidak ditemukan."
                 )
                 deployment_repository.update_status(db, deployment, DeploymentStatus.failed)
+                _notify_finished(deployment)
                 return
 
             # --- 2. Update app.status = deploying ---
@@ -221,6 +236,7 @@ def run_deployment_background(
                 f"Background task: deployment #{deployment_id} selesai "
                 f"(status={deployment.status}, app_status={app.status})"
             )
+            _notify_finished(deployment)
 
     except Exception as exc:
         logger.error(f"Background task error untuk deployment #{deployment_id}: {exc}")

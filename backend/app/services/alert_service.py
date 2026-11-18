@@ -356,6 +356,18 @@ def _send_telegram(bot_token: str, chat_id: str, text: str) -> None:
         )
 
 
+def send_discord(webhook_url: str, payload: dict[str, object]) -> None:
+    _send_discord(webhook_url, payload)
+
+
+def send_slack(webhook_url: str, payload: dict[str, object]) -> None:
+    _send_slack(webhook_url, payload)
+
+
+def send_telegram(bot_token: str, chat_id: str, text: str) -> None:
+    _send_telegram(bot_token, chat_id, text)
+
+
 def send_test(channel: AlertChannel, severity: str | None = None) -> None:
     selected = (severity or channel.min_severity or "info").lower()
     if selected not in SEVERITY_RANK:

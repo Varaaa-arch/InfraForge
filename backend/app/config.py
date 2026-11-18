@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     ALERT_WEBHOOK_SECRET: str = ""
     # Timeout request HTTP ke Discord/Telegram (detik).
     ALERT_REQUEST_TIMEOUT: float = 10.0
+    # Kirim notifikasi hasil deployment CI/webhook ke channel alert.
+    DEPLOY_NOTIFICATIONS_ENABLED: bool = True
 
     # ---------------------------------------------------------------------------
     # Auto-Healing Container

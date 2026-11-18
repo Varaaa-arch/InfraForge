@@ -36,6 +36,7 @@ from app.schemas.deployment_token import (
 )
 from app.schemas.response import ApiResponse
 from app.services import (
+    deployment_notification_service,
     deployment_queue,
     deployment_token_service,
     deployment_webhook_service,
@@ -244,6 +245,10 @@ def trigger_deployment_by_token(
         "branch": deployment.branch,
     }
 
+    background_tasks.add_task(
+        deployment_notification_service.notify_queued,
+        deployment.id,
+    )
     background_tasks.add_task(
         deployment_queue.run_deployment_background,
         deployment_id=deployment.id,
@@ -517,6 +522,11 @@ async def deployment_webhook(
         branch=scheduled[0].deployment.branch,
     )
 
+    for item in scheduled:
+        background_tasks.add_task(
+            deployment_notification_service.notify_queued,
+            item.deployment.id,
+        )
     for item in scheduled:
         background_tasks.add_task(
             deployment_queue.run_deployment_background,
