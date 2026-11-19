@@ -20,6 +20,7 @@
 - [Milestone 6 Fase 2 — Auto-Healing & Resource Container](#milestone-6-fase-2--auto-healing--resource-container)
 - [Milestone 6 Fase 3 — CI/CD Trigger Tokens](#milestone-6-fase-3--cicd-trigger-tokens)
 - [Milestone 7 Fase 1 — Webhook Receiver & Deployment Automation](#milestone-7-fase-1--webhook-receiver--deployment-automation)
+- [Milestone 7 Fase 2 — Deployment Version History & Instant Rollback](#milestone-7-fase-2--deployment-version-history--instant-rollback)
 - [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
 - [Manajemen Konfigurasi & Rahasia](#manajemen-konfigurasi-rahasia)
 - [Tata Kelola Platform](#tata-kelola-platform)
@@ -105,7 +106,7 @@ flowchart TD
 
 | Kategori | Detail |
 |---|---|
-| **Deployment** | Deploy aplikasi hanya dengan beberapa klik, riwayat status per project |
+| **Deployment** | Deploy aplikasi, riwayat tag/commit/pemicu per project, dan rollback instan ke versi stabil |
 | **CI/CD Integration** | Token project/aplikasi, webhook CI/GitHub/GitLab, idempotency, audit, dan notifikasi deployment |
 | **Container Management** | Start, stop, restart, delete, view logs, limit CPU/memory & auto-healing |
 | **Infrastructure UI** | Halaman Servers (CRUD + status exporter Prometheus) & Containers (health, port mapping, CPU/RAM, lifecycle, inspect, resource limit, tab Auto-Healing) |
@@ -454,6 +455,34 @@ webhook yang siap dipakai GitHub, GitLab, dan pipeline lain.
 
 ---
 
+## Milestone 7 Fase 2 — Deployment Version History & Instant Rollback
+
+Riwayat deployment kini menjadi catatan versi yang bisa dipakai untuk kembali ke
+rilis stabil sebelumnya tanpa menunggu pipeline baru.
+
+- **Metadata versi** — setiap deployment menyimpan tag Git dan identitas pemicu
+  (username, `deploy-token:<nama>`, atau identitas webhook), di samping commit
+  dan branch yang sudah ada.
+- **Riwayat lengkap** — tab Deployment menampilkan tag, commit pendek, branch,
+  waktu rilis, pemicu, status, dan durasi; deployment gagal atau versi lama tetap
+  terlihat.
+- **Rollback instan** — tombol Rollback pada deployment sukses lama membuka
+  dialog konfirmasi. Endpoint `POST /deployments/{id}/rollback` membalas `202`
+  dan menjalankan deployment baru di background.
+- **Snapshot exact** — rollback menyalin `tag`, `commit_sha`, branch, dan
+  compose path target; clone commit exact diverifikasi sebelum build. Versi
+  aktif tetap berjalan sampai health check rollback berhasil.
+- **Aman dan terkontrol** — hanya pengguna dengan permission deploy yang dapat
+  rollback; tombol disembunyikan untuk viewer, rilis stabil terbaru tidak
+  ditawarkan sebagai target, dan lock deployment mencegah rollback ganda.
+- **Audit** — operasi `ROLLBACK` mencatat user, deployment target, dan deployment
+  rollback baru.
+
+> Rincian kontrak API, migrasi, alur snapshot, cakupan E2E, dan batasan ada di
+> [`docs/milestone-7-phase-2.md`](docs/milestone-7-phase-2.md).
+
+---
+
 ## Manajemen Infrastruktur UI
 
 Milestone 5 Fase 1 menambahkan sisi operasional dari metrik Milestone 4: dua
@@ -584,6 +613,7 @@ perintah reproduksi, dan hasil pengujian) ada di
 - [x] UI manajemen project & environment variable (secrets manager, bulk import .env)
 - [x] Tata kelola: RBAC (Admin/Developer/Viewer), audit log, personal access token, halaman pengaturan
 - [x] CI/CD: deployment token per project/aplikasi, endpoint trigger publik, webhook GitHub/GitLab, riwayat deployment project
+- [x] Riwayat versi deployment (tag, commit, pemicu) dan rollback instan
 - [x] Notifikasi hasil deployment CI/webhook ke channel alert
 - [ ] UI manajemen aplikasi dan deployment
 - [ ] Grafana dashboards & Traefik reverse proxy
