@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
+from typing import TextIO
 
 from loguru import logger
 from sqlalchemy.orm import Session
@@ -110,6 +112,90 @@ def _write_env_file(repo_dir: Path, env_vars: dict[str, str]) -> Path:
     return env_file
 
 
+def _pump_stream(
+    stream: TextIO,
+    parts: list[str],
+    log_file: Path | None,
+    write_lock: threading.Lock,
+) -> None:
+    """Baca satu stream baris per baris sambil mengumpulkan dan menulis log."""
+    try:
+        for line in iter(stream.readline, ""):
+            parts.append(line)
+            if log_file is not None:
+                with write_lock:
+                    _append_log(log_file, line)
+    finally:
+        stream.close()
+
+
+def _stream_subprocess(
+    args: list[str],
+    cwd: Path,
+    log_file: Path | None = None,
+    timeout: float = 600.0,
+) -> tuple[int, str, str]:
+    """Jalankan perintah sambil men-stream stdout/stderr per baris ke log.
+
+    Returns:
+        Tuple (returncode, stdout, stderr).
+
+    Raises:
+        RuntimeError jika proses melewati batas waktu.
+    """
+    process = subprocess.Popen(
+        args,
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    if process.stdout is None or process.stderr is None:
+        process.kill()
+        process.wait()
+        raise RuntimeError(f"Gagal membuka stream output untuk '{' '.join(args)}'")
+
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+    write_lock = threading.Lock()
+    readers = [
+        threading.Thread(
+            target=_pump_stream,
+            args=(process.stdout, stdout_parts, log_file, write_lock),
+            daemon=True,
+        ),
+        threading.Thread(
+            target=_pump_stream,
+            args=(process.stderr, stderr_parts, log_file, write_lock),
+            daemon=True,
+        ),
+    ]
+    for reader in readers:
+        reader.start()
+
+    timed_out = False
+    try:
+        returncode = process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        process.kill()
+        returncode = process.wait()
+    finally:
+        for reader in readers:
+            reader.join()
+
+    if timed_out:
+        error_msg = (
+            f"Command '{' '.join(args)}' timeout setelah {timeout:g} detik"
+        )
+        if log_file is not None:
+            _append_log(log_file, f"[InfraForge] ERROR: {error_msg}\n")
+        raise RuntimeError(error_msg)
+
+    return returncode, "".join(stdout_parts), "".join(stderr_parts)
+
+
 def _run_compose(
     repo_dir: Path,
     compose_file: str,
@@ -119,15 +205,15 @@ def _run_compose(
     Jalankan `docker compose -f <compose_file> build` lalu
     `docker compose -f <compose_file> up -d` via subprocess.
 
-    Output (stdout + stderr) setiap perintah ditulis ke `log_file` jika
-    diberikan, sehingga WebSocket handler bisa meng-stream log secara
-    real-time.
+    Output (stdout + stderr) setiap perintah ditulis ke `log_file` baris per
+    baris saat proses berjalan, sehingga WebSocket handler bisa meng-stream
+    log secara real-time.
 
     Returns:
         Tuple (stdout_combined, stderr_combined).
 
     Raises:
-        RuntimeError jika salah satu perintah exit non-zero.
+        RuntimeError jika salah satu perintah exit non-zero atau timeout.
     """
     stdout_parts: list[str] = []
     stderr_parts: list[str] = []
@@ -141,34 +227,24 @@ def _run_compose(
         if log_file is not None:
             _append_log(log_file, header)
 
-        result = subprocess.run(
+        returncode, stdout, stderr = _stream_subprocess(
             args,
-            cwd=str(repo_dir),
-            capture_output=True,
-            text=True,
-            timeout=600,  # 10 menit per perintah
+            cwd=repo_dir,
+            log_file=log_file,
         )
-        stdout_parts.append(result.stdout)
-        stderr_parts.append(result.stderr)
+        stdout_parts.append(stdout)
+        stderr_parts.append(stderr)
 
-        # Tulis output ke log file
-        if log_file is not None:
-            combined = result.stdout
-            if result.stderr:
-                combined += result.stderr
-            if combined:
-                _append_log(log_file, combined)
-
-        if result.returncode != 0:
+        if returncode != 0:
             error_msg = (
-                f"Command '{' '.join(args)}' gagal (exit {result.returncode}):\n"
-                f"{result.stderr}"
+                f"Command '{' '.join(args)}' gagal (exit {returncode}):\n"
+                f"{stderr}"
             )
             if log_file is not None:
                 _append_log(log_file, f"[InfraForge] ERROR: {error_msg}\n")
             raise RuntimeError(error_msg)
 
-    return "\n".join(stdout_parts), "\n".join(stderr_parts)
+    return "".join(stdout_parts), "".join(stderr_parts)
 
 
 # ---------------------------------------------------------------------------

@@ -12,7 +12,10 @@ Coverage:
 from __future__ import annotations
 
 import asyncio
+import sys
 import tempfile
+import threading
+import time
 import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -66,6 +69,36 @@ def _make_mock_user(user_id: int = 1) -> MagicMock:
     user.is_active = True
     user.username = f"user_{user_id}"
     return user
+
+
+class _FakeStream:
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = iter(lines)
+
+    def readline(self) -> str:
+        return next(self._lines, "")
+
+    def close(self) -> None:
+        return None
+
+
+class _FakeProcess:
+    def __init__(
+        self,
+        stdout: list[str],
+        stderr: list[str],
+        returncode: int = 0,
+    ) -> None:
+        self.stdout = _FakeStream(stdout)
+        self.stderr = _FakeStream(stderr)
+        self.returncode = returncode
+        self.killed = False
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode
+
+    def kill(self) -> None:
+        self.killed = True
 
 
 # ---------------------------------------------------------------------------
@@ -146,26 +179,29 @@ class TestRunComposeWithLogFile:
 
         log_file = tmp_path / "deploy.log"
         log_file.touch()
-        ok = MagicMock()
-        ok.returncode = 0
-        ok.stdout = "build output\n"
-        ok.stderr = ""
-        with patch("subprocess.run", return_value=ok):
+        with patch(
+            "app.services.deployment_service._stream_subprocess",
+            return_value=(0, "build output\n", ""),
+        ):
             _run_compose(tmp_path, "docker-compose.yml", log_file=log_file)
         content = log_file.read_text()
         assert "[InfraForge] Running:" in content
 
     def test_writes_stdout_to_log(self, tmp_path: Path) -> None:
-        from app.services.deployment_service import _run_compose  # type: ignore[attr-defined]
+        from app.services.deployment_service import _stream_subprocess  # type: ignore[attr-defined]
 
         log_file = tmp_path / "deploy.log"
         log_file.touch()
-        ok = MagicMock()
-        ok.returncode = 0
-        ok.stdout = "Step 1/3: FROM python\n"
-        ok.stderr = ""
-        with patch("subprocess.run", return_value=ok):
-            _run_compose(tmp_path, "docker-compose.yml", log_file=log_file)
+        process = _FakeProcess(["Step 1/3: FROM python\n"], [])
+        with patch("subprocess.Popen", return_value=process):
+            returncode, stdout, stderr = _stream_subprocess(
+                ["docker", "compose", "build"],
+                cwd=tmp_path,
+                log_file=log_file,
+            )
+        assert returncode == 0
+        assert stdout == "Step 1/3: FROM python\n"
+        assert stderr == ""
         assert "Step 1/3: FROM python" in log_file.read_text()
 
     def test_writes_error_to_log_on_failure(self, tmp_path: Path) -> None:
@@ -173,39 +209,99 @@ class TestRunComposeWithLogFile:
 
         log_file = tmp_path / "deploy.log"
         log_file.touch()
-        fail = MagicMock()
-        fail.returncode = 1
-        fail.stdout = ""
-        fail.stderr = "Build failed: missing layer\n"
-        with patch("subprocess.run", return_value=fail):
+        with patch(
+            "app.services.deployment_service._stream_subprocess",
+            return_value=(1, "", "Build failed: missing layer\n"),
+        ):
             with pytest.raises(RuntimeError):
                 _run_compose(tmp_path, "docker-compose.yml", log_file=log_file)
         content = log_file.read_text()
         assert "[InfraForge] ERROR:" in content
 
     def test_no_log_file_still_works(self, tmp_path: Path) -> None:
-        from app.services.deployment_service import _run_compose  # type: ignore[attr-defined]
+        from app.services.deployment_service import _stream_subprocess  # type: ignore[attr-defined]
 
-        ok = MagicMock()
-        ok.returncode = 0
-        ok.stdout = "ok"
-        ok.stderr = ""
-        with patch("subprocess.run", return_value=ok):
-            stdout, _ = _run_compose(tmp_path, "docker-compose.yml", log_file=None)
+        process = _FakeProcess(["ok"], [])
+        with patch("subprocess.Popen", return_value=process):
+            returncode, stdout, _ = _stream_subprocess(
+                ["docker", "compose", "build"],
+                cwd=tmp_path,
+                log_file=None,
+            )
+        assert returncode == 0
         assert "ok" in stdout
 
     def test_stderr_written_to_log_on_success(self, tmp_path: Path) -> None:
-        from app.services.deployment_service import _run_compose  # type: ignore[attr-defined]
+        from app.services.deployment_service import _stream_subprocess  # type: ignore[attr-defined]
 
         log_file = tmp_path / "deploy.log"
         log_file.touch()
-        ok = MagicMock()
-        ok.returncode = 0
-        ok.stdout = ""
-        ok.stderr = "WARNING: deprecated flag\n"
-        with patch("subprocess.run", return_value=ok):
-            _run_compose(tmp_path, "docker-compose.yml", log_file=log_file)
+        process = _FakeProcess([], ["WARNING: deprecated flag\n"])
+        with patch("subprocess.Popen", return_value=process):
+            _stream_subprocess(
+                ["docker", "compose", "build"],
+                cwd=tmp_path,
+                log_file=log_file,
+            )
         assert "WARNING: deprecated flag" in log_file.read_text()
+
+    def test_streams_line_before_process_exits(self, tmp_path: Path) -> None:
+        from app.services.deployment_service import _stream_subprocess  # type: ignore[attr-defined]
+
+        log_file = tmp_path / "deploy.log"
+        log_file.touch()
+        signal_file = tmp_path / "continue.signal"
+        script = (
+            "import pathlib, sys, time\n"
+            "print('first line', flush=True)\n"
+            "signal = pathlib.Path(sys.argv[1])\n"
+            "for _ in range(500):\n"
+            "    if signal.exists():\n"
+            "        break\n"
+            "    time.sleep(0.01)\n"
+            "print('second line', flush=True)\n"
+        )
+        result: dict[str, object] = {}
+
+        def run() -> None:
+            result["value"] = _stream_subprocess(
+                [sys.executable, "-c", script, str(signal_file)],
+                cwd=tmp_path,
+                log_file=log_file,
+            )
+
+        worker = threading.Thread(target=run)
+        worker.start()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if "first line" in log_file.read_text():
+                break
+            time.sleep(0.01)
+
+        content_before_signal = log_file.read_text()
+        assert "first line" in content_before_signal
+        assert "second line" not in content_before_signal
+        assert worker.is_alive()
+
+        signal_file.touch()
+        worker.join(timeout=5)
+        assert not worker.is_alive()
+        assert result["value"] == (0, "first line\nsecond line\n", "")
+        assert "second line" in log_file.read_text()
+
+    def test_timeout_kills_process_and_logs_error(self, tmp_path: Path) -> None:
+        from app.services.deployment_service import _stream_subprocess  # type: ignore[attr-defined]
+
+        log_file = tmp_path / "deploy.log"
+        log_file.touch()
+        with pytest.raises(RuntimeError, match="timeout"):
+            _stream_subprocess(
+                [sys.executable, "-c", "import time; time.sleep(5)"],
+                cwd=tmp_path,
+                log_file=log_file,
+                timeout=0.2,
+            )
+        assert "[InfraForge] ERROR:" in log_file.read_text()
 
 
 # ---------------------------------------------------------------------------
@@ -503,6 +599,41 @@ class TestStreamLogFile:
         # Baris dikirim tanpa trailing newline
         assert "hello world" in sent
         assert "hello world\n" not in sent
+
+    def test_streams_lines_appended_while_deployment_running(
+        self, tmp_path: Path
+    ) -> None:
+        from app.websocket.deployment_logs import DONE_SENTINEL, _stream_log_file
+
+        log_file = tmp_path / "test.log"
+        log_file.write_text("halo 👋\n", encoding="utf-8")
+        deployment = _make_mock_deployment(status=DeploymentStatus.deploying)
+        sent: list[str] = []
+        ws = AsyncMock()
+        ws.send_text = AsyncMock(side_effect=lambda msg: sent.append(msg))
+
+        async def scenario() -> None:
+            stream_task = asyncio.create_task(
+                _stream_log_file(ws, str(log_file), 1, db=MagicMock())
+            )
+            await asyncio.sleep(0.03)
+            with log_file.open("a", encoding="utf-8") as file:
+                file.write("second line\n")
+            deployment.status = DeploymentStatus.success
+            await asyncio.wait_for(stream_task, timeout=2)
+
+        with (
+            patch(
+                "app.websocket.deployment_logs.deployment_repository.get_by_id",
+                return_value=deployment,
+            ),
+            patch("app.websocket.deployment_logs.POLL_INTERVAL", 0.01),
+        ):
+            asyncio.run(scenario())
+
+        assert sent[0] == "halo 👋"
+        assert "second line" in sent
+        assert sent[-1] == DONE_SENTINEL
 
 
 # ---------------------------------------------------------------------------

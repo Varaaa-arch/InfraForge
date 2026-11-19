@@ -121,43 +121,37 @@ class TestRunCompose:
     def test_calls_build_and_up(self, tmp_path: Path) -> None:
         from app.services.deployment_service import _run_compose  # type: ignore[attr-defined]
 
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "ok"
-        mock_result.stderr = ""
-
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
+        with patch(
+            "app.services.deployment_service._stream_subprocess",
+            return_value=(0, "ok", ""),
+        ) as mock_stream:
             _run_compose(tmp_path, "docker-compose.yml")
 
-        assert mock_run.call_count == 2
-        calls = [c.args[0] for c in mock_run.call_args_list]
+        assert mock_stream.call_count == 2
+        calls = [c.args[0] for c in mock_stream.call_args_list]
         assert any("build" in c for c in calls)
         assert any("up" in c for c in calls)
 
     def test_raises_runtime_error_on_nonzero_exit(self, tmp_path: Path) -> None:
         from app.services.deployment_service import _run_compose  # type: ignore[attr-defined]
 
-        fail_result = MagicMock()
-        fail_result.returncode = 1
-        fail_result.stdout = ""
-        fail_result.stderr = "image build failed"
-
-        with patch("subprocess.run", return_value=fail_result):
+        with patch(
+            "app.services.deployment_service._stream_subprocess",
+            return_value=(1, "", "image build failed"),
+        ):
             with pytest.raises(RuntimeError, match="gagal"):
                 _run_compose(tmp_path, "docker-compose.yml")
 
     def test_passes_compose_file_to_command(self, tmp_path: Path) -> None:
         from app.services.deployment_service import _run_compose  # type: ignore[attr-defined]
 
-        ok = MagicMock()
-        ok.returncode = 0
-        ok.stdout = ""
-        ok.stderr = ""
-
-        with patch("subprocess.run", return_value=ok) as mock_run:
+        with patch(
+            "app.services.deployment_service._stream_subprocess",
+            return_value=(0, "", ""),
+        ) as mock_stream:
             _run_compose(tmp_path, "infra/compose.prod.yml")
 
-        for call in mock_run.call_args_list:
+        for call in mock_stream.call_args_list:
             assert "infra/compose.prod.yml" in call.args[0]
 
 

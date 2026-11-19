@@ -119,7 +119,7 @@ async def _stream_log_file(
                     f.seek(file_offset)
                     chunk = f.read()
                     if chunk:
-                        file_offset += len(chunk.encode("utf-8"))
+                        file_offset = f.tell()
                         new_lines = chunk.splitlines(keepends=True)
 
             # Kirim setiap baris baru ke klien
