@@ -11,7 +11,7 @@ menyimpan informasi yang dibutuhkan oleh deployment engine nanti.
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, func
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.session import Base
@@ -52,7 +52,15 @@ class Application(Base):
         default="main",
         server_default="main",
         nullable=False,
-        comment="Branch yang akan di-deploy",
+        comment="Branch default yang akan di-deploy",
+    )
+    webhook_branches: Mapped[list[str] | None] = mapped_column(
+        JSON,
+        nullable=True,
+        comment=(
+            "Daftar branch exact yang memicu deployment webhook; "
+            "NULL berarti fallback ke branch"
+        ),
     )
     dockerfile_path: Mapped[str] = mapped_column(
         String(255),

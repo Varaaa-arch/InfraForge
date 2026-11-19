@@ -91,6 +91,18 @@ def extract_branch(ref: str) -> str | None:
     return None
 
 
+def application_accepts_branch(application: Application, branch: str) -> bool:
+    """Cek apakah branch event diizinkan oleh filter aplikasi.
+
+    Aplikasi lama tanpa ``webhook_branches`` tetap memakai ``branch`` sebagai
+    fallback agar perilaku webhook tidak berubah.
+    """
+    configured = application.webhook_branches
+    if isinstance(configured, list) and configured:
+        return branch in configured
+    return application.branch == branch
+
+
 def find_matching_applications(
     db: Session,
     repository_url: str,
@@ -120,7 +132,7 @@ def find_matching_applications(
         if app.repository is None:
             continue
         app_repo = _normalize_repo_url(app.repository)
-        if app_repo == normalized_repo and app.branch == branch:
+        if app_repo == normalized_repo and application_accepts_branch(app, branch):
             matching.append(app)
 
     return matching

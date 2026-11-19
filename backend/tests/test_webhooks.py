@@ -239,6 +239,57 @@ class TestFindMatchingApplications:
             )
         assert len(result) == 2
 
+    def test_match_uses_webhook_branches_filter(self) -> None:
+        from app.models.application import Application
+        app = MagicMock(spec=Application)
+        app.repository = "https://github.com/org/repo"
+        app.branch = "main"
+        app.webhook_branches = ["develop", "release"]
+
+        db = MagicMock()
+        with patch(
+            "app.services.webhook_service.application_repository.list_all_with_repository",
+            return_value=[app],
+        ):
+            result = webhook_service.find_matching_applications(
+                db, "https://github.com/org/repo", "release"
+            )
+        assert result == [app]
+
+    def test_no_match_branch_outside_webhook_branches(self) -> None:
+        from app.models.application import Application
+        app = MagicMock(spec=Application)
+        app.repository = "https://github.com/org/repo"
+        app.branch = "main"
+        app.webhook_branches = ["develop"]
+
+        db = MagicMock()
+        with patch(
+            "app.services.webhook_service.application_repository.list_all_with_repository",
+            return_value=[app],
+        ):
+            result = webhook_service.find_matching_applications(
+                db, "https://github.com/org/repo", "main"
+            )
+        assert result == []
+
+    def test_empty_webhook_branches_falls_back_to_branch(self) -> None:
+        from app.models.application import Application
+        app = MagicMock(spec=Application)
+        app.repository = "https://github.com/org/repo"
+        app.branch = "main"
+        app.webhook_branches = None
+
+        db = MagicMock()
+        with patch(
+            "app.services.webhook_service.application_repository.list_all_with_repository",
+            return_value=[app],
+        ):
+            result = webhook_service.find_matching_applications(
+                db, "https://github.com/org/repo", "main"
+            )
+        assert result == [app]
+
 
 # ---------------------------------------------------------------------------
 # Deployment queue: Redis lock & idempotency

@@ -78,7 +78,8 @@ def _get_owned_application_or_404(
     description=(
         "Mendaftarkan aplikasi baru ke dalam sebuah project. "
         "Payload menyertakan konfigurasi deployment lengkap: URL repository, "
-        "branch target, path Dockerfile, path docker-compose, dan build context. "
+        "branch default, daftar branch pemicu webhook, path Dockerfile, "
+        "path docker-compose, dan build context. "
         "Status awal aplikasi adalah **idle**."
     ),
     responses={
@@ -162,7 +163,8 @@ def get_application(
         "Mengupdate konfigurasi deployment aplikasi secara parsial. "
         "Semua field bersifat opsional — hanya field yang dikirim yang akan diubah. "
         "Field yang dapat diupdate: `name`, `repository`, `branch`, "
-        "`dockerfile_path`, `compose_path`, `build_context`, `status`."
+        "`webhook_branches`, `dockerfile_path`, `compose_path`, "
+        "`build_context`, `status`."
     ),
 )
 def update_application(

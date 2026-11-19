@@ -263,7 +263,7 @@ def _matches_application(application: Application, parsed: ParsedWebhook) -> boo
     return (
         webhook_service.normalize_repo_url(application.repository)
         == webhook_service.normalize_repo_url(parsed.repository)
-        and application.branch == parsed.branch
+        and webhook_service.application_accepts_branch(application, parsed.branch)
     )
 
 

@@ -75,6 +75,7 @@ def create(db: Session, payload: ApplicationCreate) -> Application:
         name=payload.name,
         repository=payload.repository,
         branch=payload.branch,
+        webhook_branches=payload.webhook_branches or [payload.branch],
         dockerfile_path=payload.dockerfile_path,
         compose_path=payload.compose_path,
         build_context=payload.build_context,

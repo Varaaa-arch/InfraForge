@@ -108,6 +108,21 @@ def _post_gitlab(
     )
 
 
+def _set_webhook_branches(
+    client: TestClient,
+    headers: dict[str, str],
+    application_id: object,
+    branches: list[str],
+) -> dict[str, object]:
+    response = client.patch(
+        f"/applications/{application_id}",
+        json={"webhook_branches": branches},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
 @pytest.fixture()
 def queue_mocks() -> Generator[tuple[object, object], None, None]:
     with (
@@ -358,6 +373,72 @@ def test_github_project_token_deploys_all_matching_apps(
     assert len(body["deployment_ids"]) == 2
 
 
+def test_github_push_uses_configured_webhook_branches(
+    client: TestClient, db_session: Session, queue_mocks: tuple[object, object]
+) -> None:
+    _user, headers, project_id, _server_id, app = _setup_deployable(
+        client, db_session
+    )
+    _set_webhook_branches(client, headers, app["id"], ["develop"])
+    data = _create_token(client, headers, project_id)
+
+    response = _post_github(
+        client, str(data["token"]), _github_payload(branch="develop")
+    )
+    assert response.status_code == 202, response.text
+    body = response.json()["data"]
+    assert body["accepted"] is True
+    assert body["branch"] == "develop"
+
+    deployment = deployment_repository.get_by_id(
+        db_session, body["deployment_ids"][0]
+    )
+    assert deployment is not None
+    assert deployment.application_id == app["id"]
+    assert deployment.branch == "develop"
+
+
+def test_github_push_rejects_branch_outside_filter(
+    client: TestClient, db_session: Session, queue_mocks: tuple[object, object]
+) -> None:
+    _user, headers, project_id, _server_id, app = _setup_deployable(
+        client, db_session
+    )
+    _set_webhook_branches(client, headers, app["id"], ["develop"])
+    data = _create_token(client, headers, project_id)
+
+    response = _post_github(client, str(data["token"]), _github_payload())
+    assert response.status_code == 202, response.text
+    body = response.json()["data"]
+    assert body["accepted"] is False
+    assert body["deployment_ids"] == []
+
+
+def test_project_token_filters_apps_by_webhook_branch(
+    client: TestClient, db_session: Session, queue_mocks: tuple[object, object]
+) -> None:
+    _user, headers, project_id, _server_id, app = _setup_deployable(
+        client, db_session
+    )
+    _set_webhook_branches(client, headers, app["id"], ["develop"])
+    _create_application(client, headers, project_id, name="worker")
+    data = _create_token(client, headers, project_id)
+
+    response = _post_github(
+        client, str(data["token"]), _github_payload(branch="develop")
+    )
+    assert response.status_code == 202, response.text
+    body = response.json()["data"]
+    assert body["accepted"] is True
+    assert len(body["deployment_ids"]) == 1
+
+    deployment = deployment_repository.get_by_id(
+        db_session, body["deployment_ids"][0]
+    )
+    assert deployment is not None
+    assert deployment.application_id == app["id"]
+
+
 # ---------------------------------------------------------------------------
 # GitLab native
 # ---------------------------------------------------------------------------
@@ -383,6 +464,32 @@ def test_gitlab_push_schedules_deployment(
     )
     assert deployment is not None
     assert deployment.application_id == app["id"]
+
+
+def test_gitlab_push_uses_configured_webhook_branches(
+    client: TestClient, db_session: Session, queue_mocks: tuple[object, object]
+) -> None:
+    _user, headers, project_id, _server_id, app = _setup_deployable(
+        client, db_session
+    )
+    _set_webhook_branches(client, headers, app["id"], ["release"])
+    data = _create_token(client, headers, project_id)
+    payload = _gitlab_payload(
+        repo_url="https://github.com/org/repo", branch="release"
+    )
+
+    response = _post_gitlab(client, str(data["token"]), payload)
+    assert response.status_code == 202, response.text
+    body = response.json()["data"]
+    assert body["accepted"] is True, body
+    assert body["branch"] == "release"
+
+    deployment = deployment_repository.get_by_id(
+        db_session, body["deployment_ids"][0]
+    )
+    assert deployment is not None
+    assert deployment.application_id == app["id"]
+    assert deployment.branch == "release"
 
 
 def test_gitlab_invalid_secret_is_rejected(
