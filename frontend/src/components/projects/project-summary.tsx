@@ -1,9 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { GitBranch, GitFork, Link2, TriangleAlert } from "lucide-react";
+import { GitBranch, GitFork, Link2, TriangleAlert, Webhook } from "lucide-react";
+import { useState } from "react";
 
 import { ApiError } from "@/api/client";
 import { fetchProjectApplications } from "@/api/projects";
+import { ApplicationBranchesDialog } from "@/components/projects/application-branches-dialog";
+import { RepositoryConnectionDialog } from "@/components/projects/repository-connection-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -20,8 +24,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { providerLabel } from "@/lib/git-provider";
 import { cn } from "@/lib/utils";
-import type { Project } from "@/types/project";
+import type { Application, Project } from "@/types/project";
 
 const timeFormatter = new Intl.DateTimeFormat("id-ID", {
   dateStyle: "medium",
@@ -49,9 +54,12 @@ const appStatusStyles: Record<string, { label: string; className: string }> = {
 
 interface ProjectSummaryProps {
   project: Project;
+  canManage: boolean;
 }
 
-export function ProjectSummary({ project }: ProjectSummaryProps) {
+export function ProjectSummary({ project, canManage }: ProjectSummaryProps) {
+  const [repositoryOpen, setRepositoryOpen] = useState(false);
+  const [branchesApp, setBranchesApp] = useState<Application | null>(null);
   const appsQuery = useQuery({
     queryKey: ["project-applications", project.id],
     queryFn: () => fetchProjectApplications(project.id),
@@ -70,9 +78,22 @@ export function ProjectSummary({ project }: ProjectSummaryProps) {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <div className="space-y-1">
-            <CardTitle className="text-base">Informasi project</CardTitle>
-            <CardDescription>Repository, branch, dan status environment variable.</CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <CardTitle className="text-base">Informasi project</CardTitle>
+              <CardDescription>Repository, branch, dan status environment variable.</CardDescription>
+            </div>
+            {canManage ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRepositoryOpen(true)}
+                data-testid="project-repository-connect"
+              >
+                <Link2 />
+                {project.repository_url ? "Ubah repository" : "Hubungkan repository"}
+              </Button>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="grid gap-4 text-sm sm:grid-cols-2">
@@ -80,9 +101,20 @@ export function ProjectSummary({ project }: ProjectSummaryProps) {
             <p className="text-xs text-muted-foreground">Repository</p>
             <p className="flex items-start gap-2">
               <GitFork className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-              <span className="truncate font-mono text-xs">
-                {project.repository_url ?? "Belum terhubung ke repository"}
-              </span>
+              {project.repository_url ? (
+                <a
+                  href={project.repository_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="truncate font-mono text-xs hover:underline"
+                >
+                  {project.repository_url}
+                </a>
+              ) : (
+                <span className="truncate text-xs text-muted-foreground">
+                  Belum terhubung ke repository
+                </span>
+              )}
             </p>
           </div>
           <div className="space-y-1.5">
@@ -96,7 +128,7 @@ export function ProjectSummary({ project }: ProjectSummaryProps) {
             <p className="text-xs text-muted-foreground">Provider</p>
             <p className="flex items-center gap-2">
               <Link2 className="size-3.5 text-muted-foreground" />
-              <span className="text-xs">{project.provider ?? "-"}</span>
+              <span className="text-xs">{providerLabel(project.provider)}</span>
             </p>
           </div>
           <div className="space-y-1.5">
@@ -150,8 +182,10 @@ export function ProjectSummary({ project }: ProjectSummaryProps) {
                   <TableRow>
                     <TableHead>Nama</TableHead>
                     <TableHead>Branch</TableHead>
+                    <TableHead>Branch webhook</TableHead>
                     <TableHead>Compose</TableHead>
                     <TableHead>Status</TableHead>
+                    {canManage ? <TableHead className="text-right">Aksi</TableHead> : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -161,10 +195,30 @@ export function ProjectSummary({ project }: ProjectSummaryProps) {
                       className:
                         "border-slate-500/30 bg-slate-500/10 text-slate-600 dark:text-slate-300",
                     };
+                    const webhookBranches =
+                      app.webhook_branches && app.webhook_branches.length > 0
+                        ? app.webhook_branches
+                        : [app.branch];
                     return (
                       <TableRow key={app.id} data-testid="project-app-row">
                         <TableCell className="font-medium">{app.name}</TableCell>
                         <TableCell className="font-mono text-xs">{app.branch}</TableCell>
+                        <TableCell>
+                          <div
+                            className="flex max-w-64 flex-wrap gap-1"
+                            data-testid="application-webhook-branches"
+                          >
+                            {webhookBranches.map((branch) => (
+                              <Badge
+                                key={branch}
+                                variant="secondary"
+                                className="font-mono text-[0.7rem]"
+                              >
+                                {branch}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
                         <TableCell className="font-mono text-xs">{app.compose_path}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={cn("gap-1.5", status.className)}>
@@ -172,6 +226,19 @@ export function ProjectSummary({ project }: ProjectSummaryProps) {
                             {status.label}
                           </Badge>
                         </TableCell>
+                        {canManage ? (
+                          <TableCell className="text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setBranchesApp(app)}
+                              data-testid="application-branches-edit"
+                            >
+                              <Webhook />
+                              Atur branch
+                            </Button>
+                          </TableCell>
+                        ) : null}
                       </TableRow>
                     );
                   })}
@@ -181,6 +248,23 @@ export function ProjectSummary({ project }: ProjectSummaryProps) {
           )}
         </CardContent>
       </Card>
+
+      <RepositoryConnectionDialog
+        key={`repository-${project.id}-${repositoryOpen ? "open" : "closed"}`}
+        open={repositoryOpen}
+        onOpenChange={setRepositoryOpen}
+        project={project}
+      />
+      <ApplicationBranchesDialog
+        key={`branches-${branchesApp?.id ?? "none"}-${branchesApp ? "open" : "closed"}`}
+        application={branchesApp}
+        open={branchesApp !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBranchesApp(null);
+          }
+        }}
+      />
     </div>
   )
 }

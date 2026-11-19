@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Copy,
+  ExternalLink,
   KeyRound,
   Loader2,
   Plus,
@@ -53,8 +54,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  buildWebhookSettingsUrl,
+  providerLabel,
+  resolveGitProvider,
+} from "@/lib/git-provider";
 import { cn } from "@/lib/utils";
 import type { DeploymentToken, DeploymentTokenCreated } from "@/types/deployment";
+import type { GitProvider } from "@/types/project";
 
 const dateFormatter = new Intl.DateTimeFormat("id-ID", {
   day: "2-digit",
@@ -128,9 +135,16 @@ function Feedback({ type, message }: { type: "success" | "error"; message: strin
 interface DeployTokensCardProps {
   projectId: number;
   canManage: boolean;
+  repositoryUrl: string | null;
+  provider: GitProvider | null;
 }
 
-export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps) {
+export function DeployTokensCard({
+  projectId,
+  canManage,
+  repositoryUrl,
+  provider,
+}: DeployTokensCardProps) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [expiry, setExpiry] = useState("90");
@@ -206,6 +220,9 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
   );
   const activeTokens = tokens.filter((token) => tokenStatus(token) === "active");
   const canSubmit = name.trim().length > 0 && !createMutation.isPending;
+  const resolvedProvider = resolveGitProvider(provider, repositoryUrl);
+  const webhookSettingsUrl = buildWebhookSettingsUrl(provider, repositoryUrl);
+  const webhookProviderName = providerLabel(resolvedProvider);
 
   const scopeLabel = (applicationId: number | null) => {
     if (applicationId === null) {
@@ -507,7 +524,39 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
                   GitHub/GitLab mengirim branch dan commit dari event; deployment
                   tetap mengambil HEAD branch saat clone.
                 </li>
+                <li>
+                  Hanya branch yang lolos filter per aplikasi (tab{" "}
+                  <span className="font-medium text-foreground">Ringkasan</span>) yang
+                  memicu deployment.
+                </li>
               </ul>
+
+              {webhookSettingsUrl ? (
+                <div className="flex flex-wrap items-center gap-2 border-t pt-2">
+                  <Button variant="outline" size="sm" asChild>
+                    <a
+                      href={webhookSettingsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="webhook-deep-link"
+                    >
+                      <ExternalLink className="size-3.5" />
+                      Buka pengaturan webhook {webhookProviderName}
+                    </a>
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    Tambahkan webhook baru lalu tempel payload URL di atas.
+                  </span>
+                </div>
+              ) : (
+                <p
+                  className="border-t pt-2 text-xs text-muted-foreground"
+                  data-testid="webhook-deep-link-unavailable"
+                >
+                  Hubungkan repository GitHub/GitLab di tab Ringkasan untuk membuka
+                  pengaturan webhook secara langsung.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -552,6 +601,25 @@ export function DeployTokensCard({ projectId, canManage }: DeployTokensCardProps
                   </code>
                 </pre>
               </div>
+              {webhookSettingsUrl ? (
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Jadikan token ini sebagai secret webhook, lalu pilih event{" "}
+                    <code>push</code>.
+                  </p>
+                  <Button variant="outline" size="sm" asChild>
+                    <a
+                      href={webhookSettingsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid="deploy-token-created-webhook-link"
+                    >
+                      <ExternalLink className="size-3.5" />
+                      Buka pengaturan webhook {webhookProviderName}
+                    </a>
+                  </Button>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

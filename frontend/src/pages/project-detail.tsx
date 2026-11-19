@@ -196,13 +196,15 @@ export function ProjectDetailPage() {
       </div>
 
       {tab === "summary" ? (
-        <ProjectSummary project={project} />
+        <ProjectSummary project={project} canManage={canManageDeployTokens} />
       ) : tab === "env" ? (
         <EnvVarsPanel projectId={project.id} onOpenBulkImport={() => setBulkOpen(true)} />
       ) : tab === "ci" ? (
         <DeployTokensCard
           projectId={project.id}
           canManage={canManageDeployTokens}
+          repositoryUrl={project.repository_url}
+          provider={project.provider}
         />
       ) : (
         <DeploymentHistory projectId={project.id} />

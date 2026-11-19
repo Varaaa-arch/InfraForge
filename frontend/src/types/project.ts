@@ -30,12 +30,28 @@ export interface Application {
   name: string;
   repository: string | null;
   branch: string;
+  webhook_branches: string[];
   dockerfile_path: string;
   compose_path: string;
   build_context: string | null;
   status: AppStatus;
   created_at: string;
   updated_at: string;
+}
+
+export interface RepositoryUpdate {
+  repository_url: string;
+  default_branch: string;
+  provider: GitProvider;
+}
+
+export interface ApplicationUpdate {
+  branch?: string;
+  repository?: string | null;
+  webhook_branches?: string[] | null;
+  dockerfile_path?: string;
+  compose_path?: string;
+  build_context?: string | null;
 }
 
 export interface EnvVarMasked {

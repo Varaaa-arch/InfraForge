@@ -1,12 +1,14 @@
 import { apiFetch } from "@/api/client";
 import type {
   Application,
+  ApplicationUpdate,
   EnvVarBulkResult,
   EnvVarInput,
   EnvVarList,
   EnvVarMasked,
   EnvVarPlain,
   Project,
+  RepositoryUpdate,
 } from "@/types/project";
 
 export function fetchProjects(): Promise<Project[]> {
@@ -24,6 +26,26 @@ export function fetchProjectApplications(projectId: number): Promise<Application
 
 export function fetchApplications(): Promise<Application[]> {
   return apiFetch<Application[]>("/applications");
+}
+
+export function updateProjectRepository(
+  projectId: number,
+  payload: RepositoryUpdate,
+): Promise<Project> {
+  return apiFetch<Project>(`/projects/${projectId}/repository`, {
+    method: "PATCH",
+    json: payload,
+  });
+}
+
+export function updateApplication(
+  applicationId: number,
+  payload: ApplicationUpdate,
+): Promise<Application> {
+  return apiFetch<Application>(`/applications/${applicationId}`, {
+    method: "PATCH",
+    json: payload,
+  });
 }
 
 export function fetchEnvVars(projectId: number): Promise<EnvVarList> {
