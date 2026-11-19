@@ -10,6 +10,8 @@ export interface Deployment {
   branch: string;
   trigger_source: TriggerSource;
   commit_sha: string | null;
+  tag: string | null;
+  triggered_by: string | null;
   log_path: string | null;
   started_at: string;
   finished_at: string | null;

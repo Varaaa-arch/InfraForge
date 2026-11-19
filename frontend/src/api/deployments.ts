@@ -25,3 +25,9 @@ export function fetchDeployments(query: DeploymentQuery = {}): Promise<Deploymen
   const suffix = params.size > 0 ? `?${params.toString()}` : "";
   return apiFetch<Deployment[]>(`/deployments${suffix}`);
 }
+
+export function rollbackDeployment(deploymentId: number): Promise<Deployment> {
+  return apiFetch<Deployment>(`/deployments/${deploymentId}/rollback`, {
+    method: "POST",
+  });
+}
