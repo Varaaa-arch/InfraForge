@@ -585,6 +585,7 @@ def _deploy_with_mocks(
     clone_result = MagicMock()
     clone_result.repo_dir = Path("/tmp/fake_repo_ws")
     clone_result.commit_sha = "deadbeef12345678"
+    clone_result.tag = None
 
     healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
 
@@ -766,6 +767,7 @@ class TestWebSocketEndpointStreaming:
         clone_result = MagicMock()
         clone_result.repo_dir = Path("/tmp/fake_nolog")
         clone_result.commit_sha = "abc123"
+        clone_result.tag = None
 
         healthy = HealthCheckResult(healthy=True, containers_checked=1, message="ok")
 

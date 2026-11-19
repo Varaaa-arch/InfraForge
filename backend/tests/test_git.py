@@ -310,3 +310,112 @@ class TestBuildHttpsUrlWithToken:
 
         result = _build_https_url_with_token("github.com/org/repo", "u", "t")
         assert result == "github.com/org/repo"
+
+
+# ---------------------------------------------------------------------------
+# clone_repository — exact tag / commit untuk riwayat versi & rollback
+# ---------------------------------------------------------------------------
+
+class TestCloneExactVersion:
+    def test_clone_by_tag_uses_tag_as_checkout_ref(self, tmp_path: Path) -> None:
+        from app.services.git_service import clone_repository
+
+        mock_repo = _make_mock_repo("b" * 40)
+        mock_repo.git.tag.return_value = "v1.2.3"
+
+        with (
+            patch("app.services.git_service._TMP_BASE", tmp_path),
+            patch("git.Repo.clone_from", return_value=mock_repo) as mock_clone,
+        ):
+            result = clone_repository(
+                "https://github.com/org/repo.git",
+                branch="main",
+                tag="v1.2.3",
+            )
+
+        kwargs = mock_clone.call_args[1]
+        assert kwargs["branch"] == "v1.2.3"
+        assert kwargs["depth"] == 1
+        assert result.tag == "v1.2.3"
+        assert result.commit_sha == "b" * 40
+
+    def test_clone_by_commit_uses_full_clone_and_checkout(self, tmp_path: Path) -> None:
+        from app.services.git_service import clone_repository
+
+        target_sha = "a" * 40
+        mock_repo = _make_mock_repo(target_sha)
+        mock_repo.git.tag.return_value = ""
+
+        with (
+            patch("app.services.git_service._TMP_BASE", tmp_path),
+            patch("git.Repo.clone_from", return_value=mock_repo) as mock_clone,
+        ):
+            result = clone_repository(
+                "https://github.com/org/repo.git",
+                branch="main",
+                commit_sha=target_sha,
+                depth=1,
+            )
+
+        kwargs = mock_clone.call_args[1]
+        assert "branch" not in kwargs
+        assert "depth" not in kwargs
+        assert kwargs["no_single_branch"] is True
+        mock_repo.git.checkout.assert_called_once_with(target_sha)
+        assert result.commit_sha == target_sha
+
+    def test_clone_commit_mismatch_raises(self, tmp_path: Path) -> None:
+        from app.services.git_service import clone_repository
+
+        mock_repo = _make_mock_repo("b" * 40)
+        mock_repo.git.tag.return_value = ""
+
+        with (
+            patch("app.services.git_service._TMP_BASE", tmp_path),
+            patch("git.Repo.clone_from", return_value=mock_repo),
+        ):
+            with pytest.raises(RuntimeError, match="tidak cocok"):
+                clone_repository(
+                    "https://github.com/org/repo.git",
+                    commit_sha="a" * 40,
+                )
+
+    def test_clone_branch_detects_exact_tag_at_head(self, tmp_path: Path) -> None:
+        from app.services.git_service import clone_repository
+
+        mock_repo = _make_mock_repo("d" * 40)
+        mock_repo.git.tag.return_value = "v2.0.0-rc1\nv2.0.0\n"
+
+        with (
+            patch("app.services.git_service._TMP_BASE", tmp_path),
+            patch("git.Repo.clone_from", return_value=mock_repo),
+        ):
+            result = clone_repository(
+                "https://github.com/org/repo.git",
+                branch="main",
+            )
+
+        assert result.tag == "v2.0.0"
+
+    def test_clone_with_tag_and_commit_prefers_exact_commit(
+        self, tmp_path: Path
+    ) -> None:
+        from app.services.git_service import clone_repository
+
+        target_sha = "e" * 40
+        mock_repo = _make_mock_repo(target_sha)
+        mock_repo.git.tag.return_value = "v3.0.0"
+
+        with (
+            patch("app.services.git_service._TMP_BASE", tmp_path),
+            patch("git.Repo.clone_from", return_value=mock_repo),
+        ):
+            result = clone_repository(
+                "https://github.com/org/repo.git",
+                branch="main",
+                tag="v3.0.0",
+                commit_sha=target_sha,
+            )
+
+        mock_repo.git.checkout.assert_called_once_with(target_sha)
+        assert result.tag == "v3.0.0"

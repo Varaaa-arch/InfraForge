@@ -321,6 +321,7 @@ def _run_deployment(
     """
     repo_dir: Path | None = None
     log_file: Path | None = None
+    compose_path = deployment.compose_path_snapshot or app.compose_path
 
     try:
         # --- 1. Set status deploying ---
@@ -348,27 +349,41 @@ def _run_deployment(
             )
 
         # --- 4. Clone repository ---
+        target_desc = (
+            f"tag={deployment.tag}"
+            if deployment.tag
+            else (
+                f"commit={deployment.commit_sha}"
+                if deployment.commit_sha
+                else f"branch={deployment.branch}"
+            )
+        )
         _append_log(
             log_file,
-            f"[InfraForge] Cloning {app.repository} branch={deployment.branch} ...\n",
+            f"[InfraForge] Cloning {app.repository} {target_desc} ...\n",
         )
         clone_result = git_service.clone_repository(
             url=app.repository,
             branch=deployment.branch,
             depth=1,
+            tag=deployment.tag,
+            commit_sha=deployment.commit_sha,
         )
         repo_dir = clone_result.repo_dir
         _append_log(
             log_file,
-            f"[InfraForge] Clone selesai. commit={clone_result.commit_sha}\n",
+            f"[InfraForge] Clone selesai. commit={clone_result.commit_sha}"
+            + (f" tag={clone_result.tag}" if clone_result.tag else "")
+            + "\n",
         )
 
-        # Update commit SHA segera setelah clone
+        # Update commit SHA + tag segera setelah clone
         deployment_repository.update_status(
             db,
             deployment,
             DeploymentStatus.deploying,
             commit_sha=clone_result.commit_sha,
+            tag=clone_result.tag,
         )
 
         # --- 5. Inject env vars ---
@@ -389,7 +404,7 @@ def _run_deployment(
 
         # --- 6. Jalankan docker compose (output ke log file) ---
         _append_log(log_file, "[InfraForge] Menjalankan docker compose build + up...\n")
-        _run_compose(repo_dir, app.compose_path, log_file=log_file)
+        _run_compose(repo_dir, compose_path, log_file=log_file)
         from app.services import container_policy_service
 
         applied = container_policy_service.reapply_all()
@@ -424,7 +439,7 @@ def _run_deployment(
         )
         deployment_repository.update_status(
             db, deployment, DeploymentStatus.success,
-            compose_path_snapshot=app.compose_path,
+            compose_path_snapshot=compose_path,
         )
         logger.info(
             f"Deployment #{deployment.id} sukses "
@@ -503,40 +518,37 @@ def list_deployments_by_application(
     )
 
 
-def rollback_deployment(
+def create_rollback_deployment(
     db: Session,
     target_deployment_id: int,
     application_id: int,
+    *,
+    triggered_by: str | None = None,
 ) -> Deployment:
     """
-    Rollback ke state deployment sukses sebelumnya.
+    Validasi target rollback dan buat Deployment record baru (status pending).
 
-    Flow:
-      1. Validasi target deployment: harus ada + status success + milik app ini.
-      2. Cek concurrency lock (double-guard seperti trigger_deployment).
-      3. Ambil snapshot dari target: branch, commit_sha, compose_path_snapshot.
-      4. Buat Deployment record baru (is_rollback=True, rollback_of=target_id).
-      5. Jalankan _run_deployment dengan compose_path dari snapshot.
+    Eksekusi dilakukan asynchronous oleh ``run_deployment_background`` agar
+    response API instan. Record menyimpan snapshot versi target secara eksplisit:
+    ``tag``, ``commit_sha``, ``branch``, dan ``compose_path_snapshot``.
 
     Args:
         target_deployment_id: ID deployment sukses yang akan di-rollback ke sana.
-        application_id:       ID aplikasi (untuk validasi kepemilikan + lock).
+        application_id:       ID aplikasi (validasi kepemilikan + lock).
+        triggered_by:         Identitas user yang memicu rollback.
 
     Returns:
         Deployment record baru yang merepresentasikan operasi rollback.
 
     Raises:
-        ValueError:   Jika target deployment tidak ditemukan, bukan milik app ini,
-                      atau bukan status success.
-        RuntimeError: Jika aplikasi sedang deploying (concurrency guard),
-                      atau proses rollback gagal.
+        ValueError:   Target tidak ditemukan/bukan milik app/bukan success,
+                      atau server target sudah dihapus.
+        RuntimeError: Aplikasi sedang deploying (concurrency guard).
     """
     from app.services.deployment_queue import (
-        acquire_deploy_lock,
         get_running_deployment_id,
         is_deployment_running,
         is_locked_by_db_status,
-        release_deploy_lock,
     )
 
     # --- 1. Validasi target deployment ---
@@ -555,14 +567,13 @@ def rollback_deployment(
             f"Deployment #{target_deployment_id} berstatus '{target.status.value}'."
         )
 
+    app = application_repository.get_by_id(db, application_id)
+    if app is None:
+        raise ValueError(f"Application {application_id} tidak ditemukan.")
+
     # Pastikan ada snapshot compose_path (deployment lama mungkin tidak punya)
-    compose_path = target.compose_path_snapshot
-    if not compose_path:
-        # Fallback: ambil dari konfigurasi aplikasi saat ini
-        app = application_repository.get_by_id(db, application_id)
-        if app is None:
-            raise ValueError(f"Application {application_id} tidak ditemukan.")
-        compose_path = app.compose_path
+    compose_path = target.compose_path_snapshot or app.compose_path
+    if not target.compose_path_snapshot:
         logger.warning(
             f"Deployment #{target_deployment_id} tidak punya compose_path_snapshot, "
             f"fallback ke app.compose_path='{compose_path}'"
@@ -582,19 +593,20 @@ def rollback_deployment(
             f"Tunggu hingga deployment aktif selesai."
         )
 
-    # --- 3. Ambil app + server ---
-    app = application_repository.get_by_id(db, application_id)
-    if app is None:
-        raise ValueError(f"Application {application_id} tidak ditemukan.")
-
-    server = server_repository.get_by_id(db, target.server_id) if target.server_id else None
+    # --- 3. Pastikan server target masih ada ---
+    server = (
+        server_repository.get_by_id(db, target.server_id)
+        if target.server_id
+        else None
+    )
     if server is None:
         raise ValueError(
-            f"Server dari deployment #{target_deployment_id} tidak ditemukan atau sudah dihapus. "
-            "Gunakan trigger_deployment biasa dengan server yang masih aktif."
+            f"Server dari deployment #{target_deployment_id} tidak ditemukan atau "
+            "sudah dihapus. Gunakan trigger_deployment biasa dengan server yang "
+            "masih aktif."
         )
 
-    # --- 4. Buat Deployment record rollback ---
+    # --- 4. Buat deployment record rollback (pending) ---
     rollback_dep = deployment_repository.create(
         db,
         application_id=application_id,
@@ -603,40 +615,15 @@ def rollback_deployment(
         rollback_of=target_deployment_id,
         compose_path_snapshot=compose_path,
         is_rollback=True,
+        trigger_source=TriggerSource.manual.value,
+        tag=target.tag,
+        triggered_by=triggered_by,
+        commit_sha=target.commit_sha,
     )
 
-    # --- 5. Acquire lock + jalankan rollback ---
-    acquired = acquire_deploy_lock(application_id, rollback_dep.id)
-    if not acquired:
-        deployment_repository.update_status(db, rollback_dep, DeploymentStatus.failed)
-        running_id = get_running_deployment_id(application_id)
-        raise RuntimeError(
-            f"Application {application_id} sedang dalam proses deployment "
-            f"(deployment_id={running_id}). Race condition terdeteksi."
-        )
-
-    # Update app.status = deploying
-    application_repository.update_status(db, app, AppStatus.deploying)
-
-    try:
-        # Jalankan deployment dengan compose_path dari snapshot
-        # Override compose_path di app object (tidak di-commit ke DB)
-        app.compose_path = compose_path
-        _run_deployment(db, rollback_dep, app, server)
-        application_repository.update_status(db, app, AppStatus.running)
-    except Exception:
-        application_repository.update_status(db, app, AppStatus.failed)
-        logger.error(
-            f"Rollback deployment #{rollback_dep.id} "
-            f"(target={target_deployment_id}) gagal."
-        )
-        raise
-    finally:
-        release_deploy_lock(application_id)
-
     logger.info(
-        f"Rollback #{rollback_dep.id} sukses "
+        f"Rollback #{rollback_dep.id} dijadwalkan "
         f"(app={application_id}, target=#{target_deployment_id}, "
-        f"branch={target.branch}, compose={compose_path})"
+        f"tag={target.tag}, commit={target.commit_sha}, compose={compose_path})"
     )
     return rollback_dep

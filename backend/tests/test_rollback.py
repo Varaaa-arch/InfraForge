@@ -5,8 +5,8 @@ Coverage:
   - get_last_successful: query deployment sukses terakhir
   - deployment_repository.create: rollback columns tersimpan
   - rollback_deployment service: happy path, guard conditions
-  - POST /deployments/{id}/rollback endpoint:
-      - happy path → 201
+  - POST /deployments/{id}/rollback endpoint (async):
+      - happy path → 202 + background task dijadwalkan
       - target bukan success → 422
       - target tidak ditemukan → 404
       - target milik app lain → 404
@@ -20,8 +20,6 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from app.models.deployment import Deployment, DeploymentStatus
 
@@ -60,12 +58,30 @@ def _create_app(client, headers, project_id) -> int:
     return int(r.json()["data"]["id"])
 
 
-def _make_deployment(db, app_id: int, server_id: int, status: str, compose_path: str = "docker-compose.yml") -> Deployment:
+def _make_deployment(
+    db,
+    app_id: int,
+    server_id: int | None,
+    status: str,
+    compose_path: str = "docker-compose.yml",
+    *,
+    tag: str | None = None,
+    commit_sha: str | None = None,
+    triggered_by: str | None = None,
+) -> Deployment:
     """Buat deployment record langsung di DB untuk testing."""
     from app.repositories import deployment_repository
     from app.models.deployment import DeploymentStatus as DS
 
-    dep = deployment_repository.create(db, app_id, server_id, "main")
+    dep = deployment_repository.create(
+        db,
+        app_id,
+        server_id,
+        "main",
+        tag=tag,
+        commit_sha=commit_sha,
+        triggered_by=triggered_by,
+    )
     # Update status langsung
     if status == "success":
         deployment_repository.update_status(
@@ -227,202 +243,137 @@ class TestDeploymentResponseRollbackFields:
 
 
 # ---------------------------------------------------------------------------
-# Integration tests: POST /deployments/{id}/rollback
+# Integration tests: POST /deployments/{id}/rollback (async, 202)
 # ---------------------------------------------------------------------------
 
 class TestRollbackEndpoint:
+    def _setup(self, client) -> tuple[dict[str, str], int, int, int]:
+        headers = _register_and_login(client)
+        project_id = _create_project(client, headers)
+        server_id = _create_server(client, headers)
+        app_id = _create_app(client, headers, project_id)
+        return headers, project_id, server_id, app_id
+
     def test_rollback_target_not_found_returns_404(self, client) -> None:
         headers = _register_and_login(client)
         r = client.post("/deployments/99999/rollback", headers=headers)
         assert r.status_code == 404
 
-    def test_rollback_target_owned_by_other_user_returns_404(self, client) -> None:
-        # User 1 buat deployment
-        headers1 = _register_and_login(client)
-        project_id = _create_project(client, headers1)
-        server_id = _create_server(client, headers1)
-        app_id = _create_app(client, headers1, project_id)
+    def test_rollback_target_owned_by_other_user_returns_404(
+        self, client, db_session
+    ) -> None:
+        _headers1, _pid, server_id, app_id = self._setup(client)
+        target = _make_deployment(db_session, app_id, server_id, "success")
 
-        # Buat deployment success untuk user 1
-        # Mock rollback karena butuh deployment success yang ada di DB
-        # Langsung hit endpoint dengan user 2
         headers2 = _register_and_login(client)
+        r = client.post(f"/deployments/{target.id}/rollback", headers=headers2)
+        assert r.status_code == 404
 
-        # User 2 coba rollback ke deployment milik user 1 (pakai ID palsu)
-        # Kita perlu deployment ID yang ada di DB milik user 1
-        # Buat dulu via patching create_deployment_record + update status manual
-        with patch("app.services.deployment_service._run_deployment"):
-            with patch("app.services.deployment_queue.redis_client") as mock_redis:
-                mock_redis.exists.return_value = 0
-                mock_redis.get.return_value = None
-                mock_redis.set.return_value = True
+    def test_rollback_non_success_deployment_returns_422(
+        self, client, db_session
+    ) -> None:
+        headers, _pid, server_id, app_id = self._setup(client)
+        target = _make_deployment(db_session, app_id, server_id, "failed")
 
-                r = client.post(
-                    "/deployments",
-                    json={"application_id": app_id, "server_id": server_id},
-                    headers=headers1,
-                )
+        r = client.post(f"/deployments/{target.id}/rollback", headers=headers)
+        assert r.status_code == 422
+        assert "success" in r.json()["message"].lower()
 
-        if r.status_code == 201:
-            dep_id = r.json()["data"]["id"]
-            # User 2 tidak bisa rollback ke deployment user 1
-            r2 = client.post(f"/deployments/{dep_id}/rollback", headers=headers2)
-            assert r2.status_code == 404
+    def test_rollback_locked_app_returns_409(self, client, db_session) -> None:
+        headers, _pid, server_id, app_id = self._setup(client)
+        target = _make_deployment(db_session, app_id, server_id, "success")
 
-    def test_rollback_non_success_deployment_returns_422(self, client) -> None:
-        headers = _register_and_login(client)
-        project_id = _create_project(client, headers)
-        server_id = _create_server(client, headers)
-        app_id = _create_app(client, headers, project_id)
-
-        # Buat deployment dengan status failed (via mock _run_deployment yang gagal)
-        with patch(
-            "app.services.deployment_service._run_deployment",
-            side_effect=RuntimeError("compose failed"),
-        ):
-            with patch("app.services.deployment_queue.redis_client") as mock_redis:
-                mock_redis.exists.return_value = 0
-                mock_redis.get.return_value = None
-                mock_redis.set.return_value = True
-
-                r = client.post(
-                    "/deployments",
-                    json={"application_id": app_id, "server_id": server_id},
-                    headers=headers,
-                )
-
-        # Deployment harus ada (status failed)
-        if r.status_code in (201, 500):
-            # Cari deployment yang baru dibuat
-            r_list = client.get(
-                f"/deployments?application_id={app_id}",
-                headers=headers,
-            )
-            deps = r_list.json()["data"]
-            if deps:
-                dep_id = deps[0]["id"]
-                # Rollback ke deployment failed harus 422
-                r_rb = client.post(f"/deployments/{dep_id}/rollback", headers=headers)
-                assert r_rb.status_code == 422
-                assert "success" in r_rb.json()["message"].lower()
-
-    def test_rollback_locked_app_returns_409(self, client) -> None:
-        headers = _register_and_login(client)
-        project_id = _create_project(client, headers)
-        server_id = _create_server(client, headers)
-        app_id = _create_app(client, headers, project_id)
-
-        # Buat success deployment
-        with patch("app.services.deployment_service._run_deployment"):
-            with patch("app.services.deployment_queue.redis_client") as mock_redis:
-                mock_redis.exists.return_value = 0
-                mock_redis.get.return_value = None
-                mock_redis.set.return_value = True
-
-                r = client.post(
-                    "/deployments",
-                    json={"application_id": app_id, "server_id": server_id},
-                    headers=headers,
-                )
-
-        if r.status_code != 201:
-            pytest.skip("Deployment creation failed, skipping rollback locked test")
-
-        dep_id = r.json()["data"]["id"]
-
-        # Simulasi: set deployment status success + compose_path_snapshot manual
-        with patch(
-            "app.services.deployment_service.rollback_deployment",
-            side_effect=RuntimeError(
-                f"Application {app_id} sedang dalam proses deployment "
-                "(deployment_id=99). Tunggu hingga selesai sebelum rollback."
+        with (
+            patch(
+                "app.services.deployment_queue.is_deployment_running",
+                return_value=True,
+            ),
+            patch(
+                "app.services.deployment_queue.get_running_deployment_id",
+                return_value=99,
             ),
         ):
-            r_rb = client.post(f"/deployments/{dep_id}/rollback", headers=headers)
+            r = client.post(f"/deployments/{target.id}/rollback", headers=headers)
 
-        assert r_rb.status_code == 409
-        assert "sedang dalam proses deployment" in r_rb.json()["message"]
+        assert r.status_code == 409
+        assert "sedang dalam proses deployment" in r.json()["message"]
 
-    def test_rollback_happy_path_returns_201(self, client) -> None:
-        headers = _register_and_login(client)
-        project_id = _create_project(client, headers)
-        server_id = _create_server(client, headers)
-        app_id = _create_app(client, headers, project_id)
+    def test_rollback_server_deleted_returns_422(
+        self, client, db_session
+    ) -> None:
+        headers, _pid, _server_id, app_id = self._setup(client)
+        target = _make_deployment(db_session, app_id, None, "success")
 
-        # 1. Buat deployment awal
-        with patch("app.services.deployment_service._run_deployment"):
-            with patch("app.services.deployment_queue.redis_client") as mock_redis:
-                mock_redis.exists.return_value = 0
-                mock_redis.get.return_value = None
-                mock_redis.set.return_value = True
+        r = client.post(f"/deployments/{target.id}/rollback", headers=headers)
+        assert r.status_code == 422
+        assert "server" in r.json()["message"].lower()
 
-                r = client.post(
-                    "/deployments",
-                    json={"application_id": app_id, "server_id": server_id},
-                    headers=headers,
-                )
-
-        if r.status_code != 201:
-            pytest.skip("Initial deployment failed, skipping rollback happy path test")
-
-        dep_id = r.json()["data"]["id"]
-
-        # 2. Simulasi rollback_deployment sukses (service layer penuh di-mock)
-        from app.models.deployment import Deployment as DepModel
-
-        mock_rb = MagicMock(spec=DepModel)
-        mock_rb.id = 999
-        mock_rb.application_id = app_id
-        mock_rb.server_id = server_id
-        mock_rb.status = DeploymentStatus.success
-        mock_rb.branch = "main"
-        mock_rb.commit_sha = "abc123"
-        mock_rb.log_path = None
-        mock_rb.started_at = datetime.now(tz=timezone.utc)
-        mock_rb.finished_at = datetime.now(tz=timezone.utc)
-        mock_rb.is_rollback = True
-        mock_rb.rollback_of = dep_id
-        mock_rb.compose_path_snapshot = "docker-compose.yml"
-        mock_rb.trigger_source = "manual"
-        mock_rb.tag = None
-        mock_rb.triggered_by = "rb_user"
+    def test_rollback_happy_path_returns_202_and_schedules(
+        self, client, db_session
+    ) -> None:
+        headers, _pid, server_id, app_id = self._setup(client)
+        target = _make_deployment(
+            db_session,
+            app_id,
+            server_id,
+            "success",
+            compose_path="deploy/prod-compose.yml",
+            tag="v1.4.2",
+            commit_sha="a" * 40,
+            triggered_by="ci",
+        )
 
         with patch(
-            "app.services.deployment_service.rollback_deployment",
-            return_value=mock_rb,
-        ):
-            r_rb = client.post(f"/deployments/{dep_id}/rollback", headers=headers)
+            "app.services.deployment_queue.run_deployment_background"
+        ) as background_mock:
+            r = client.post(
+                f"/deployments/{target.id}/rollback", headers=headers
+            )
 
-        assert r_rb.status_code == 201
-        data = r_rb.json()["data"]
+        assert r.status_code == 202
+        data = r.json()["data"]
+        assert data["status"] == "pending"
         assert data["is_rollback"] is True
-        assert data["rollback_of"] == dep_id
+        assert data["rollback_of"] == target.id
+        assert data["tag"] == "v1.4.2"
+        assert data["commit_sha"] == "a" * 40
+        assert data["compose_path_snapshot"] == "deploy/prod-compose.yml"
+        assert data["triggered_by"].startswith("rb_")
+        assert data["finished_at"] is None
 
-    def test_rollback_response_contains_new_fields(self, client) -> None:
-        """Pastikan DeploymentResponse memiliki field rollback baru."""
-        headers = _register_and_login(client)
-        project_id = _create_project(client, headers)
-        server_id = _create_server(client, headers)
-        app_id = _create_app(client, headers, project_id)
+        background_mock.assert_called_once_with(
+            deployment_id=data["id"],
+            application_id=app_id,
+            server_id=server_id,
+        )
 
-        with patch("app.services.deployment_service._run_deployment"):
-            with patch("app.services.deployment_queue.redis_client") as mock_redis:
-                mock_redis.exists.return_value = 0
-                mock_redis.get.return_value = None
-                mock_redis.set.return_value = True
+    def test_rollback_preserves_exact_target_version_in_db(
+        self, client, db_session
+    ) -> None:
+        headers, _pid, server_id, app_id = self._setup(client)
+        target = _make_deployment(
+            db_session,
+            app_id,
+            server_id,
+            "success",
+            tag="release-9",
+            commit_sha="b" * 40,
+        )
 
-                r = client.post(
-                    "/deployments",
-                    json={"application_id": app_id, "server_id": server_id},
-                    headers=headers,
-                )
+        with patch("app.services.deployment_queue.run_deployment_background"):
+            r = client.post(
+                f"/deployments/{target.id}/rollback", headers=headers
+            )
 
-        if r.status_code == 201:
-            data = r.json()["data"]
-            # Field baru harus ada di response
-            assert "is_rollback" in data
-            assert "rollback_of" in data
-            assert "compose_path_snapshot" in data
-            # Deployment biasa: is_rollback=False
-            assert data["is_rollback"] is False
-            assert data["rollback_of"] is None
+        assert r.status_code == 202
+        from app.repositories import deployment_repository
+
+        rollback = deployment_repository.get_by_id(
+            db_session, int(r.json()["data"]["id"])
+        )
+        assert rollback is not None
+        assert rollback.is_rollback is True
+        assert rollback.rollback_of == target.id
+        assert rollback.branch == target.branch
+        assert rollback.tag == "release-9"
+        assert rollback.commit_sha == "b" * 40

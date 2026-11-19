@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import nullcontext
 from unittest.mock import patch
 
 from app.models.deployment import DeploymentStatus
@@ -158,3 +159,67 @@ def test_deployment_response_exposes_version_metadata(client, db_session) -> Non
     data = response.json()["data"]
     assert data["tag"] == "v3.1.0"
     assert data["triggered_by"] == username
+
+
+def test_rollback_background_runs_with_snapshotted_version(client, db_session) -> None:
+    from app.models.application import AppStatus
+    from app.repositories import application_repository
+    from app.services import deployment_queue, deployment_service
+
+    headers, username = _register_and_login(client)
+    project_id = _create_project(client, headers)
+    server_id = _create_server(client, headers)
+    app_id = _create_app(client, headers, project_id)
+
+    target = deployment_repository.create(
+        db_session,
+        app_id,
+        server_id,
+        "main",
+        tag="v4.2.0",
+        commit_sha="f" * 40,
+        triggered_by="ci",
+    )
+    deployment_repository.update_status(
+        db_session,
+        target,
+        DeploymentStatus.success,
+        compose_path_snapshot="deploy/legacy-compose.yml",
+    )
+    rollback = deployment_service.create_rollback_deployment(
+        db_session,
+        target.id,
+        app_id,
+        triggered_by=username,
+    )
+
+    with (
+        patch("app.services.deployment_queue.redis_client") as redis_mock,
+        patch(
+            "app.services.deployment_queue.SessionLocal",
+            return_value=nullcontext(db_session),
+        ),
+        patch(
+            "app.services.deployment_service._run_deployment"
+        ) as run_mock,
+    ):
+        redis_mock.set.return_value = True
+        redis_mock.delete.return_value = 1
+
+        deployment_queue.run_deployment_background(
+            deployment_id=rollback.id,
+            application_id=app_id,
+            server_id=server_id,
+        )
+
+    executed = run_mock.call_args.args[1]
+    assert executed.id == rollback.id
+    assert executed.tag == "v4.2.0"
+    assert executed.commit_sha == "f" * 40
+    assert executed.compose_path_snapshot == "deploy/legacy-compose.yml"
+    assert executed.rollback_of == target.id
+
+    db_session.expire_all()
+    app = application_repository.get_by_id(db_session, app_id)
+    assert app is not None
+    assert app.status == AppStatus.running

@@ -103,6 +103,7 @@ def create(
     trigger_source: str = TriggerSource.manual.value,
     tag: str | None = None,
     triggered_by: str | None = None,
+    commit_sha: str | None = None,
 ) -> Deployment:
     """
     Buat entri deployment baru dengan status `pending`.
@@ -115,6 +116,7 @@ def create(
         trigger_source:        Pemicu deployment (manual/github_webhook/ci_token).
         tag:                   Git tag target (opsional).
         triggered_by:          Identitas pemicu (username/token/webhook).
+        commit_sha:            Commit exact untuk rollback (opsional).
 
     Commit dan refresh dilakukan di sini.
     """
@@ -129,6 +131,7 @@ def create(
         trigger_source=trigger_source,
         tag=tag,
         triggered_by=triggered_by,
+        commit_sha=commit_sha,
     )
     db.add(deployment)
     db.commit()

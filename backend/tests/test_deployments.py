@@ -54,6 +54,9 @@ def _make_deployment(
     branch: str = "main",
     status: DeploymentStatus = DeploymentStatus.pending,
     commit_sha: str | None = None,
+    tag: str | None = None,
+    is_rollback: bool = False,
+    compose_path_snapshot: str | None = None,
 ) -> MagicMock:
     dep = MagicMock()
     dep.id = dep_id
@@ -62,6 +65,9 @@ def _make_deployment(
     dep.branch = branch
     dep.status = status
     dep.commit_sha = commit_sha
+    dep.tag = tag
+    dep.is_rollback = is_rollback
+    dep.compose_path_snapshot = compose_path_snapshot
     dep.log_path = None
     dep.started_at = datetime.now(tz=timezone.utc)
     dep.finished_at = None
@@ -74,6 +80,7 @@ def _make_clone_result(sha: str = "deadbeef1234abcd") -> MagicMock:
     result.branch = "main"
     result.commit_sha = sha
     result.success = True
+    result.tag = None
     return result
 
 
@@ -366,6 +373,75 @@ class TestRunDeployment:
             _run_deployment(db, deployment, app, server)
 
         mock_write.assert_not_called()
+
+    def test_rollback_uses_exact_commit_and_compose_snapshot(self) -> None:
+        from app.services.deployment_service import _run_deployment  # type: ignore[attr-defined]
+
+        db = MagicMock()
+        app = _make_app(compose_path="docker-compose.yml")
+        server = _make_server()
+        target_sha = "c" * 40
+        deployment = _make_deployment(
+            commit_sha=target_sha,
+            tag="v1.0.0",
+            is_rollback=True,
+            compose_path_snapshot="deploy/prod-compose.yml",
+        )
+        clone_result = _make_clone_result(sha=target_sha)
+        clone_result.tag = "v1.0.0"
+
+        p = self._patches()
+        with (
+            patch(p["clone"], return_value=clone_result) as mock_clone,
+            patch(p["cleanup"]),
+            patch(p["run_compose"], return_value=("", "")) as mock_compose,
+            patch(p["write_env"]),
+            patch(p["list_env"], return_value=[]),
+            patch(p["health_check"], return_value=self._healthy_hc()),
+            patch(p["update_status"]) as mock_update,
+        ):
+            _run_deployment(db, deployment, app, server)
+
+        assert mock_clone.call_args.kwargs["tag"] == "v1.0.0"
+        assert mock_clone.call_args.kwargs["commit_sha"] == target_sha
+        assert mock_compose.call_args.args[1] == "deploy/prod-compose.yml"
+        success_calls = [
+            c for c in mock_update.call_args_list
+            if c.args[2] == DeploymentStatus.success
+        ]
+        assert success_calls[0].kwargs["compose_path_snapshot"] == (
+            "deploy/prod-compose.yml"
+        )
+
+    def test_branch_deploy_records_tag_detected_at_head(self) -> None:
+        from app.services.deployment_service import _run_deployment  # type: ignore[attr-defined]
+
+        db = MagicMock()
+        app = _make_app()
+        server = _make_server()
+        deployment = _make_deployment()
+        clone_result = _make_clone_result()
+        clone_result.tag = "v2.3.4"
+
+        p = self._patches()
+        with (
+            patch(p["clone"], return_value=clone_result) as mock_clone,
+            patch(p["cleanup"]),
+            patch(p["run_compose"], return_value=("", "")),
+            patch(p["write_env"]),
+            patch(p["list_env"], return_value=[]),
+            patch(p["health_check"], return_value=self._healthy_hc()),
+            patch(p["update_status"]) as mock_update,
+        ):
+            _run_deployment(db, deployment, app, server)
+
+        assert mock_clone.call_args.kwargs["tag"] is None
+        assert mock_clone.call_args.kwargs["commit_sha"] is None
+        tag_calls = [
+            c for c in mock_update.call_args_list
+            if c.kwargs.get("tag") == "v2.3.4"
+        ]
+        assert tag_calls
 
     def test_commit_sha_stored_after_clone(self) -> None:
         from app.services.deployment_service import _run_deployment  # type: ignore[attr-defined]

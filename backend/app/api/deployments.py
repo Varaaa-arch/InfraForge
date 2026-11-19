@@ -16,7 +16,7 @@ Query params GET /deployments:
   offset         : baris dilewati untuk pagination (default 0)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from pathlib import Path
@@ -221,13 +221,14 @@ def get_deployment(
 @router.post(
     "/{deployment_id}/rollback",
     response_model=ApiResponse[DeploymentResponse],
-    status_code=status.HTTP_201_CREATED,
-    summary="Rollback ke deployment sukses sebelumnya",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Rollback instan ke deployment sukses sebelumnya",
     description=(
-        "Menjalankan rollback ke state dari sebuah deployment sukses. "
-        "Endpoint ini membuat deployment record baru (`is_rollback=true`) yang "
-        "menggunakan `branch`, `commit_sha`, dan `compose_path` dari deployment "
-        "target (`{deployment_id}`).\n\n"
+        "Menjadwalkan rollback ke versi dari sebuah deployment sukses. "
+        "Endpoint membuat deployment record baru (`is_rollback=true`) yang "
+        "menyimpan snapshot `tag`, `commit_sha`, `branch`, dan `compose_path` "
+        "dari deployment target (`{deployment_id}`), lalu menjalankannya di "
+        "background agar response instan.\n\n"
         "**Guard conditions:**\n"
         "- Target deployment harus berstatus `success`.\n"
         "- Aplikasi tidak boleh sedang dalam proses deployment (concurrency lock).\n"
@@ -235,7 +236,7 @@ def get_deployment(
         "- Server dari deployment target harus masih ada."
     ),
     responses={
-        201: {"description": "Rollback berhasil dijalankan"},
+        202: {"description": "Rollback diterima dan sedang dijalankan di background"},
         404: {"description": "Deployment target tidak ditemukan atau bukan milik user"},
         409: {"description": "Aplikasi sedang deploying, coba lagi nanti"},
         422: {"description": "Target deployment bukan status success"},
@@ -243,6 +244,7 @@ def get_deployment(
 )
 def rollback_deployment(
     deployment_id: int,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(require_permission(Permission.DEPLOY)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[DeploymentResponse]:
@@ -256,10 +258,11 @@ def rollback_deployment(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Deployment not found")
 
     try:
-        rollback = deployment_service.rollback_deployment(
+        rollback = deployment_service.create_rollback_deployment(
             db=db,
             target_deployment_id=deployment_id,
             application_id=target.application_id,
+            triggered_by=current_user.username,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
@@ -268,6 +271,21 @@ def rollback_deployment(
         if "sedang dalam proses deployment" in str(exc):
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc))
+
+    if rollback.server_id is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Server target rollback tidak tersedia.",
+        )
+
+    from app.services.deployment_queue import run_deployment_background
+
+    background_tasks.add_task(
+        run_deployment_background,
+        deployment_id=rollback.id,
+        application_id=target.application_id,
+        server_id=rollback.server_id,
+    )
 
     log_audit(
         "ROLLBACK_DEPLOYMENT",
