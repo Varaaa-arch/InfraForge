@@ -43,7 +43,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import decode_token
 from app.database.session import get_db
-from app.models.deployment import DeploymentStatus
+from app.models.deployment import Deployment, DeploymentStatus
 from app.repositories import deployment_repository
 from app.services import auth_service
 
@@ -70,6 +70,17 @@ def _get_db_session() -> Session:
     return next(get_db())
 
 
+def _get_fresh_deployment(db: Session, deployment_id: int) -> Deployment | None:
+    """
+    Baca ulang deployment dari database, bukan dari identity map session.
+
+    Proses deployment berjalan di session lain. Tanpa ``expire_all``, polling
+    WebSocket dapat terus melihat status lama dan tidak pernah mengirim sentinel.
+    """
+    db.expire_all()
+    return deployment_repository.get_by_id(db, deployment_id)
+
+
 async def _wait_for_log_path(
     deployment_id: int,
     db: Session,
@@ -83,7 +94,7 @@ async def _wait_for_log_path(
     """
     elapsed = 0.0
     while elapsed < timeout:
-        dep = deployment_repository.get_by_id(db, deployment_id)
+        dep = _get_fresh_deployment(db, deployment_id)
         if dep is not None and dep.log_path:
             return dep.log_path
         # Jika deployment sudah terminal tapi log_path masih None → tidak akan ada log
@@ -127,7 +138,7 @@ async def _stream_log_file(
                 await websocket.send_text(line.rstrip("\n"))
 
             # Cek status deployment dari DB
-            dep = deployment_repository.get_by_id(db, deployment_id)
+            dep = _get_fresh_deployment(db, deployment_id)
             if dep is not None and dep.status in _TERMINAL_STATUSES:
                 # Satu putaran ekstra untuk memastikan tidak ada sisa log
                 if not new_lines:
@@ -224,7 +235,7 @@ async def deployment_logs_ws(
         log_path = await _wait_for_log_path(deployment_id, db)
         if not log_path:
             # Deployment sudah terminal tapi tidak punya log file
-            dep_now = deployment_repository.get_by_id(db, deployment_id)
+            dep_now = _get_fresh_deployment(db, deployment_id)
             msg = (
                 "[INFRAFORGE:ERROR] Log file tidak tersedia untuk deployment ini."
                 if dep_now is None or dep_now.log_path is None

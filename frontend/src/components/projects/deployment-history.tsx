@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   History,
   RotateCcw,
+  ScrollText,
   TriangleAlert,
   XCircle,
 } from "lucide-react";
@@ -11,6 +12,7 @@ import { useState } from "react";
 import { ApiError } from "@/api/client";
 import { fetchDeployments, rollbackDeployment } from "@/api/deployments";
 import { fetchProjectApplications } from "@/api/projects";
+import { DeploymentLogDialog } from "@/components/projects/deployment-log-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -116,12 +118,17 @@ function Feedback({ type, message }: { type: "success" | "error"; message: strin
 
 interface DeploymentHistoryProps {
   projectId: number;
+  canViewLogs: boolean;
 }
 
-export function DeploymentHistory({ projectId }: DeploymentHistoryProps) {
+export function DeploymentHistory({
+  projectId,
+  canViewLogs,
+}: DeploymentHistoryProps) {
   const queryClient = useQueryClient();
   const { canDeploy } = usePermissions();
   const [rollbackTarget, setRollbackTarget] = useState<Deployment | null>(null);
+  const [logTarget, setLogTarget] = useState<Deployment | null>(null);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
@@ -170,6 +177,11 @@ export function DeploymentHistory({ projectId }: DeploymentHistoryProps) {
   const applicationNames = new Map(
     (applicationsQuery.data ?? []).map((app) => [app.id, app.name]),
   );
+  const logDeployment =
+    logTarget === null
+      ? null
+      : (deployments.find((deployment) => deployment.id === logTarget.id) ??
+        logTarget);
   const latestSuccessByApplication = new Map<number, number>();
   const activeApplicationIds = new Set(
     deployments
@@ -347,32 +359,52 @@ export function DeploymentHistory({ projectId }: DeploymentHistoryProps) {
                           {formatDuration(deployment.duration)}
                         </TableCell>
                         <TableCell>
-                          {canRollback ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="xs"
-                              disabled={applicationIsActive || rollbackMutation.isPending}
-                              title={
-                                applicationIsActive
-                                  ? "Tunggu deployment aplikasi ini selesai"
-                                  : `Rollback ke ${versionLabel(deployment)}`
-                              }
-                              aria-label={`Rollback ${applicationName} ke ${versionLabel(
-                                deployment,
-                              )}`}
-                              data-testid="deployment-rollback-button"
-                              onClick={() => {
-                                setFeedback(null);
-                                setRollbackTarget(deployment);
-                              }}
-                            >
-                              <RotateCcw />
-                              Rollback
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            {canViewLogs ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="xs"
+                                aria-label={`Lihat log deployment #${deployment.id}`}
+                                data-testid="deployment-log-button"
+                                onClick={() => setLogTarget(deployment)}
+                              >
+                                <ScrollText />
+                                Log
+                              </Button>
+                            ) : null}
+                            {canRollback ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="xs"
+                                disabled={
+                                  applicationIsActive || rollbackMutation.isPending
+                                }
+                                title={
+                                  applicationIsActive
+                                    ? "Tunggu deployment aplikasi ini selesai"
+                                    : `Rollback ke ${versionLabel(deployment)}`
+                                }
+                                aria-label={`Rollback ${applicationName} ke ${versionLabel(
+                                  deployment,
+                                )}`}
+                                data-testid="deployment-rollback-button"
+                                onClick={() => {
+                                  setFeedback(null);
+                                  setRollbackTarget(deployment);
+                                }}
+                              >
+                                <RotateCcw />
+                                Rollback
+                              </Button>
+                            ) : null}
+                            {!canViewLogs && !canRollback ? (
+                              <span className="text-xs text-muted-foreground">
+                                —
+                              </span>
+                            ) : null}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -402,6 +434,23 @@ export function DeploymentHistory({ projectId }: DeploymentHistoryProps) {
         onConfirm={() => {
           if (rollbackTarget) {
             rollbackMutation.mutate(rollbackTarget);
+          }
+        }}
+      />
+
+      <DeploymentLogDialog
+        key={`deployment-log-${logTarget?.id ?? "none"}-${logTarget ? "open" : "closed"}`}
+        deployment={logDeployment}
+        applicationName={
+          logDeployment
+            ? (applicationNames.get(logDeployment.application_id) ??
+              `App #${logDeployment.application_id}`)
+            : "Aplikasi"
+        }
+        open={logTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLogTarget(null);
           }
         }}
       />

@@ -207,7 +207,10 @@ export function ProjectDetailPage() {
           provider={project.provider}
         />
       ) : (
-        <DeploymentHistory projectId={project.id} />
+        <DeploymentHistory
+          projectId={project.id}
+          canViewLogs={user?.id === project.owner_id}
+        />
       )}
 
       <EnvBulkImportDialog

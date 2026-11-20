@@ -525,6 +525,33 @@ class TestStreamLogFile:
 
         assert sent[-1] == DONE_SENTINEL
 
+    def test_refreshes_deployment_state_from_database(
+        self, tmp_path: Path
+    ) -> None:
+        """Polling harus expire identity map agar status dari session lain terlihat."""
+        from app.websocket.deployment_logs import DONE_SENTINEL, _stream_log_file
+
+        log_file = tmp_path / "test.log"
+        log_file.write_text("line\n")
+
+        sent: list[str] = []
+        ws = AsyncMock()
+        ws.send_text = AsyncMock(side_effect=lambda msg: sent.append(msg))
+        dep = _make_mock_deployment(status=DeploymentStatus.success)
+        db = MagicMock()
+
+        with (
+            patch(
+                "app.websocket.deployment_logs.deployment_repository.get_by_id",
+                return_value=dep,
+            ),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            asyncio.run(_stream_log_file(ws, str(log_file), 1, db))
+
+        assert db.expire_all.call_count >= 2
+        assert sent[-1] == DONE_SENTINEL
+
     def test_waits_when_deploying_then_exits_when_terminal(
         self, tmp_path: Path
     ) -> None:

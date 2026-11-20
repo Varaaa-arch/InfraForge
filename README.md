@@ -21,6 +21,7 @@
 - [Milestone 6 Fase 3 — CI/CD Trigger Tokens](#milestone-6-fase-3--cicd-trigger-tokens)
 - [Milestone 7 Fase 1 — Webhook Receiver & Deployment Automation](#milestone-7-fase-1--webhook-receiver--deployment-automation)
 - [Milestone 7 Fase 2 — Deployment Version History & Instant Rollback](#milestone-7-fase-2--deployment-version-history--instant-rollback)
+- [Milestone 7 Fase 3 — Git Provider Integration & Live Deployment Logs](#milestone-7-fase-3--git-provider-integration--live-deployment-logs)
 - [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
 - [Manajemen Konfigurasi & Rahasia](#manajemen-konfigurasi-rahasia)
 - [Tata Kelola Platform](#tata-kelola-platform)
@@ -107,7 +108,7 @@ flowchart TD
 | Kategori | Detail |
 |---|---|
 | **Deployment** | Deploy aplikasi, riwayat tag/commit/pemicu per project, dan rollback instan ke versi stabil |
-| **CI/CD Integration** | Token project/aplikasi, webhook CI/GitHub/GitLab, idempotency, audit, dan notifikasi deployment |
+| **CI/CD Integration** | Token project/aplikasi, koneksi repository, webhook GitHub/GitLab dengan filter branch per aplikasi, live log deployment, idempotency, audit, dan notifikasi |
 | **Container Management** | Start, stop, restart, delete, view logs, limit CPU/memory & auto-healing |
 | **Infrastructure UI** | Halaman Servers (CRUD + status exporter Prometheus) & Containers (health, port mapping, CPU/RAM, lifecycle, inspect, resource limit, tab Auto-Healing) |
 | **Configuration & Secrets** | Environment variable per project terenkripsi (Fernet), secret masking, indikator re-deploy, bulk import `.env` |
@@ -483,6 +484,33 @@ rilis stabil sebelumnya tanpa menunggu pipeline baru.
 
 ---
 
+## Milestone 7 Fase 3 — Git Provider Integration & Live Deployment Logs
+
+Deployment berbasis Git kini lebih terkontrol dan proses build-nya bisa diamati
+langsung dari dashboard.
+
+- **Koneksi repository** — pemilik project dapat menyimpan URL repository,
+  provider (GitHub/GitLab/Bitbucket), dan branch default lewat dialog Ringkasan.
+- **Filter branch per aplikasi** — daftar branch exact (maksimal 20) menentukan
+  push mana yang memicu deployment; aplikasi lama tetap memakai branch deploy
+  sebagai fallback.
+- **Helper webhook** — tab CI/CD memberi deep link ke halaman pengaturan webhook
+  GitHub atau GitLab. Deployment token existing tetap menjadi secret webhook;
+  tidak ada PAT/OAuth baru yang disimpan.
+- **Live build/compose log** — tombol Log pada riwayat deployment membuka dialog
+  streaming WebSocket. Setiap baris stdout/stderr muncul saat proses berjalan,
+  bukan setelah build selesai.
+- **Status dan pemulihan** — dialog menampilkan `Live`/`Selesai`/`Error`, tombol
+  salin dan sambung ulang, serta tidak merender sentinel internal.
+- **Perbaikan polling** — WebSocket melakukan expire identity map sebelum membaca
+  status deployment agar sentinel selesai selalu terkirim saat proses lintas
+  session berubah menjadi `success` atau `failed`.
+
+> Rincian kontrak API, migrasi, keputusan desain, cakupan E2E, dan batasan ada di
+> [`docs/milestone-7-phase-3.md`](docs/milestone-7-phase-3.md).
+
+---
+
 ## Manajemen Infrastruktur UI
 
 Milestone 5 Fase 1 menambahkan sisi operasional dari metrik Milestone 4: dua
@@ -614,6 +642,7 @@ perintah reproduksi, dan hasil pengujian) ada di
 - [x] Tata kelola: RBAC (Admin/Developer/Viewer), audit log, personal access token, halaman pengaturan
 - [x] CI/CD: deployment token per project/aplikasi, endpoint trigger publik, webhook GitHub/GitLab, riwayat deployment project
 - [x] Riwayat versi deployment (tag, commit, pemicu) dan rollback instan
+- [x] Koneksi repository, filter branch webhook per aplikasi, dan live log build/compose
 - [x] Notifikasi hasil deployment CI/webhook ke channel alert
 - [ ] UI manajemen aplikasi dan deployment
 - [ ] Grafana dashboards & Traefik reverse proxy
