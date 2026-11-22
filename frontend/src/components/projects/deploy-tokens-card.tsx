@@ -6,6 +6,7 @@ import {
   KeyRound,
   Loader2,
   Plus,
+  RefreshCw,
   Trash2,
   Webhook,
   XCircle,
@@ -17,6 +18,7 @@ import {
   createDeployToken,
   fetchDeployTokens,
   revokeDeployToken,
+  rotateDeployToken,
 } from "@/api/deploy-tokens";
 import { fetchProjectApplications } from "@/api/projects";
 import { Badge } from "@/components/ui/badge";
@@ -150,6 +152,8 @@ export function DeployTokensCard({
   const [expiry, setExpiry] = useState("90");
   const [applicationScope, setApplicationScope] = useState("all");
   const [created, setCreated] = useState<DeploymentTokenCreated | null>(null);
+  const [createdKind, setCreatedKind] = useState<"created" | "rotated">("created");
+  const [rotating, setRotating] = useState<DeploymentToken | null>(null);
   const [revoking, setRevoking] = useState<DeploymentToken | null>(null);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
@@ -183,6 +187,7 @@ export function DeployTokensCard({
         application_id: payload.applicationId,
       }),
     onSuccess: (token) => {
+      setCreatedKind("created");
       setCreated(token);
       setName("");
       setExpiry("90");
@@ -195,6 +200,27 @@ export function DeployTokensCard({
         type: "error",
         message: errorMessage(error, "Gagal membuat deployment token."),
       }),
+  });
+
+  const rotateMutation = useMutation({
+    mutationFn: (tokenId: number) => rotateDeployToken(projectId, tokenId),
+    onSuccess: (token) => {
+      setCreatedKind("rotated");
+      setCreated(token);
+      setRotating(null);
+      setFeedback({
+        type: "success",
+        message: `${token.name} dirotasi. Token lama langsung tidak berlaku.`,
+      });
+      void invalidate();
+    },
+    onError: (error) => {
+      setRotating(null);
+      setFeedback({
+        type: "error",
+        message: errorMessage(error, "Gagal merotasi deployment token."),
+      });
+    },
   });
 
   const revokeMutation = useMutation({
@@ -421,15 +447,26 @@ export function DeployTokensCard({
                             </TableCell>
                             <TableCell className="text-right">
                               {status === "active" ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  data-testid="deploy-token-revoke"
-                                  onClick={() => setRevoking(token)}
-                                >
-                                  <Trash2 className="size-3.5" />
-                                  Cabut
-                                </Button>
+                                <div className="flex justify-end gap-1.5">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    data-testid="deploy-token-rotate"
+                                    onClick={() => setRotating(token)}
+                                  >
+                                    <RefreshCw className="size-3.5" />
+                                    Rotasi
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    data-testid="deploy-token-revoke"
+                                    onClick={() => setRevoking(token)}
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                    Cabut
+                                  </Button>
+                                </div>
                               ) : (
                                 <span className="text-xs text-muted-foreground">—</span>
                               )}
@@ -565,10 +602,15 @@ export function DeployTokensCard({
       <Dialog open={created !== null} onOpenChange={(open) => !open && setCreated(null)}>
         <DialogContent data-testid="deploy-token-created-dialog">
           <DialogHeader>
-            <DialogTitle>Deployment token dibuat</DialogTitle>
+            <DialogTitle>
+              {createdKind === "rotated"
+                ? "Deployment token dirotasi"
+                : "Deployment token dibuat"}
+            </DialogTitle>
             <DialogDescription>
-              Salin token sekarang. Untuk alasan keamanan, token lengkap tidak akan
-              ditampilkan lagi setelah dialog ini ditutup.
+              {createdKind === "rotated"
+                ? "Token lama sudah tidak berlaku. Salin token baru sekarang — token lengkap tidak akan ditampilkan lagi setelah dialog ini ditutup."
+                : "Salin token sekarang. Untuk alasan keamanan, token lengkap tidak akan ditampilkan lagi setelah dialog ini ditutup."}
             </DialogDescription>
           </DialogHeader>
 
@@ -636,6 +678,49 @@ export function DeployTokensCard({
               Salin token
             </Button>
             <Button onClick={() => setCreated(null)}>Selesai</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={rotating !== null}
+        onOpenChange={(open) => {
+          if (!open && !rotateMutation.isPending) {
+            setRotating(null);
+          }
+        }}
+      >
+        <DialogContent data-testid="deploy-token-rotate-dialog">
+          <DialogHeader>
+            <DialogTitle>Rotasi deployment token?</DialogTitle>
+            <DialogDescription>
+              Secret baru akan dibuat untuk{" "}
+              <span className="font-medium">{rotating?.name}</span>. Token lama
+              langsung tidak berlaku, tetapi nama, cakupan aplikasi, dan masa
+              berlakunya dipertahankan. Deployment yang sedang berjalan tidak
+              dibatalkan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRotating(null)}
+              disabled={rotateMutation.isPending}
+            >
+              Batal
+            </Button>
+            <Button
+              data-testid="deploy-token-rotate-confirm"
+              disabled={rotateMutation.isPending}
+              onClick={() => rotating && rotateMutation.mutate(rotating.id)}
+            >
+              {rotateMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              Rotasi token
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

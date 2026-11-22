@@ -19,6 +19,20 @@ export function createDeployToken(
   });
 }
 
+export function rotateDeployToken(
+  projectId: number,
+  tokenId: number,
+  expiresInDays?: number,
+): Promise<DeploymentTokenCreated> {
+  return apiFetch<DeploymentTokenCreated>(
+    `/projects/${projectId}/deploy-tokens/${tokenId}/rotate`,
+    {
+      method: "POST",
+      json: expiresInDays ? { expires_in_days: expiresInDays } : {},
+    },
+  );
+}
+
 export function revokeDeployToken(
   projectId: number,
   tokenId: number,

@@ -319,7 +319,12 @@ export function DeploymentHistory({
                                   deployment.trigger_source}
                               </Badge>
                               {deployment.is_rollback ? (
-                                <Badge variant="secondary">Rollback</Badge>
+                                <Badge
+                                  variant="secondary"
+                                  data-testid="deployment-rollback-badge"
+                                >
+                                  Rollback
+                                </Badge>
                               ) : null}
                             </div>
                             <span
