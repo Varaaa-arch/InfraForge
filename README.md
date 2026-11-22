@@ -22,6 +22,7 @@
 - [Milestone 7 Fase 1 — Webhook Receiver & Deployment Automation](#milestone-7-fase-1--webhook-receiver--deployment-automation)
 - [Milestone 7 Fase 2 — Deployment Version History & Instant Rollback](#milestone-7-fase-2--deployment-version-history--instant-rollback)
 - [Milestone 7 Fase 3 — Git Provider Integration & Live Deployment Logs](#milestone-7-fase-3--git-provider-integration--live-deployment-logs)
+- [Milestone 7 Fase 4 — Token Rotation, Security Alerts & Playwright E2E](#milestone-7-fase-4--token-rotation-security-alerts--playwright-e2e)
 - [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
 - [Manajemen Konfigurasi & Rahasia](#manajemen-konfigurasi-rahasia)
 - [Tata Kelola Platform](#tata-kelola-platform)
@@ -108,7 +109,7 @@ flowchart TD
 | Kategori | Detail |
 |---|---|
 | **Deployment** | Deploy aplikasi, riwayat tag/commit/pemicu per project, dan rollback instan ke versi stabil |
-| **CI/CD Integration** | Token project/aplikasi, koneksi repository, webhook GitHub/GitLab dengan filter branch per aplikasi, live log deployment, idempotency, audit, dan notifikasi |
+| **CI/CD Integration** | Token project/aplikasi dengan rotasi aman, koneksi repository, webhook GitHub/GitLab dengan filter branch per aplikasi, live log deployment, idempotency, audit, alert security, dan E2E Playwright |
 | **Container Management** | Start, stop, restart, delete, view logs, limit CPU/memory & auto-healing |
 | **Infrastructure UI** | Halaman Servers (CRUD + status exporter Prometheus) & Containers (health, port mapping, CPU/RAM, lifecycle, inspect, resource limit, tab Auto-Healing) |
 | **Configuration & Secrets** | Environment variable per project terenkripsi (Fernet), secret masking, indikator re-deploy, bulk import `.env` |
@@ -511,6 +512,37 @@ langsung dari dashboard.
 
 ---
 
+## Milestone 7 Fase 4 — Token Rotation, Security Alerts & Playwright E2E
+
+Fase ini menutup DoD Milestone 7 dengan rotasi token yang aman, notifikasi
+keamanan, dan E2E Playwright end-to-end.
+
+- **Rotasi token** — endpoint `POST
+  /projects/{id}/deploy-tokens/{token_id}/rotate` memperbarui secret in-place.
+  ID, nama, cakupan aplikasi, dan expiry dipertahankan kecuali
+  `expires_in_days` dikirim. Plaintext baru tampil sekali; token lama langsung
+  tidak berlaku.
+- **Guard token nonaktif** — token revoked atau expired tidak dapat dirotasi
+  dan ditolak `409`; pengguna harus membuat token baru.
+- **Audit rotasi** — action `DEPLOY_TOKEN_ROTATE` mencatat project dan token
+  tanpa menyimpan plaintext.
+- **Security alerts** — channel alert existing menerima event token
+  created/rotated/revoked dan webhook yang ditolak/diabaikan. Event
+  `scheduled` dilewati agar tidak menduplikasi notifikasi deployment queued.
+- **UI rotasi** — tombol **Rotasi** pada token aktif membuka konfirmasi dan
+  modal plaintext baru, dengan penjelasan bahwa token lama langsung tidak
+  berlaku.
+- **Playwright E2E** — satu skenario penuh: token → rotasi → webhook branch
+  filter → riwayat → rollback → live log → audit, tanpa page error.
+- **Seed deterministik** — `scripts/seed_m7_e2e.py` membuat user `e2e_m7`,
+  project, aplikasi, deployment sukses lama/baru, dan deployment live log.
+
+> Rincian kontrak API, matriks alert, perintah E2E, hasil verifikasi, dan
+> batasan ada di
+> [`docs/milestone-7-phase-4.md`](docs/milestone-7-phase-4.md).
+
+---
+
 ## Manajemen Infrastruktur UI
 
 Milestone 5 Fase 1 menambahkan sisi operasional dari metrik Milestone 4: dua
@@ -644,6 +676,7 @@ perintah reproduksi, dan hasil pengujian) ada di
 - [x] Riwayat versi deployment (tag, commit, pemicu) dan rollback instan
 - [x] Koneksi repository, filter branch webhook per aplikasi, dan live log build/compose
 - [x] Notifikasi hasil deployment CI/webhook ke channel alert
+- [x] Rotasi token, alert security webhook, dan E2E Playwright DoD Milestone 7
 - [ ] UI manajemen aplikasi dan deployment
 - [ ] Grafana dashboards & Traefik reverse proxy
 - [ ] Object storage MinIO untuk artefak deployment

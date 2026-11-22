@@ -77,6 +77,10 @@ docker compose exec -T backend uv run --no-dev alembic upgrade head
 | | | `422` | Target CI ambigu/tidak ditemukan |
 | `POST` | `/deploy/trigger/{token}` | `202` | Endpoint legacy M6, tetap berfungsi |
 
+Rotasi token (`POST /projects/{id}/deploy-tokens/{token_id}/rotate`) dan alert
+security token/webhook ditambahkan pada Milestone 7 Fase 4; lihat
+[`milestone-7-phase-4.md`](milestone-7-phase-4.md).
+
 `accepted=false` tetap memakai HTTP `202` untuk event yang valid tetapi tidak
 menghasilkan deployment: event non-push, tidak ada aplikasi cocok, duplikat,
 atau semua target sedang terkunci. Ini mencegah GitHub/GitLab melakukan retry
