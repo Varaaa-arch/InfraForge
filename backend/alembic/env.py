@@ -29,9 +29,14 @@ from app.models import (  # noqa: F401, E402
     DeploymentStatus,
     EnvVar,
     GitProvider,
+    ImageScan,
+    ImageScanStatus,
     Project,
     Server,
     ServerStatus,
+    TlsDomain,
+    TlsDomainCheck,
+    TlsDomainStatus,
     User,
 )
 

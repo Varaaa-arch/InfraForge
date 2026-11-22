@@ -22,12 +22,14 @@ class Permission(str, enum.Enum):
     ENV_VAR_WRITE = "env_var:write"
     APPLICATION_WRITE = "application:write"
     IMAGE_WRITE = "image:write"
+    IMAGE_SCAN = "image:scan"
     CONTAINER_LIFECYCLE = "container:lifecycle"
     CONTAINER_DELETE = "container:delete"
     DEPLOY = "deploy"
     ALERT_CHANNEL_WRITE = "alert_channel:write"
     USER_MANAGE = "user:manage"
     AUDIT_READ_ALL = "audit:read_all"
+    TLS_DOMAIN_WRITE = "tls_domain:write"
 
 
 ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
@@ -38,8 +40,10 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
             Permission.ENV_VAR_WRITE,
             Permission.APPLICATION_WRITE,
             Permission.IMAGE_WRITE,
+            Permission.IMAGE_SCAN,
             Permission.CONTAINER_LIFECYCLE,
             Permission.DEPLOY,
+            Permission.TLS_DOMAIN_WRITE,
         }
     ),
     Role.VIEWER.value: frozenset(),

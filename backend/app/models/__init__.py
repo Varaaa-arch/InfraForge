@@ -6,8 +6,10 @@ from app.models.container_policy import ContainerPolicy
 from app.models.deployment import Deployment, DeploymentStatus, TriggerSource
 from app.models.deployment_token import DeploymentToken
 from app.models.env_var import EnvVar
+from app.models.image_scan import ImageScan, ImageScanStatus
 from app.models.project import GitProvider, Project
 from app.models.server import AuthType, Server, ServerStatus
+from app.models.tls_domain import TlsDomain, TlsDomainCheck, TlsDomainStatus
 from app.models.user import User
 
 __all__ = [
@@ -26,9 +28,14 @@ __all__ = [
     "DeploymentToken",
     "EnvVar",
     "GitProvider",
+    "ImageScan",
+    "ImageScanStatus",
     "Project",
     "Server",
     "ServerStatus",
+    "TlsDomain",
+    "TlsDomainCheck",
+    "TlsDomainStatus",
     "TriggerSource",
     "User",
 ]

@@ -3,11 +3,13 @@ import {
   BellRing,
   Boxes,
   FolderKanban,
+  GlobeLock,
   Hammer,
   LayoutDashboard,
   ScrollText,
   Server,
   Settings,
+  ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
@@ -39,6 +41,8 @@ const navSections: { label: string; items: NavItem[] }[] = [
     items: [
       { title: "Servers", href: "/servers", icon: Server },
       { title: "Containers", href: "/containers", icon: Boxes },
+      { title: "Keamanan", href: "/security", icon: ShieldAlert },
+      { title: "TLS / SSL", href: "/tls-domains", icon: GlobeLock },
     ],
   },
   {

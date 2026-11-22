@@ -67,6 +67,20 @@ export const router = createBrowserRouter([
             },
           },
           {
+            path: "security",
+            lazy: async () => {
+              const { SecurityPage } = await import("@/pages/security");
+              return { Component: SecurityPage };
+            },
+          },
+          {
+            path: "tls-domains",
+            lazy: async () => {
+              const { TlsDomainsPage } = await import("@/pages/tls-domains");
+              return { Component: TlsDomainsPage };
+            },
+          },
+          {
             path: "projects",
             lazy: async () => {
               const { ProjectsPage } = await import("@/pages/projects");

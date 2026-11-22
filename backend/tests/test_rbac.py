@@ -61,12 +61,14 @@ def test_permission_matrix() -> None:
     assert has_permission(Role.DEVELOPER.value, Permission.DEPLOY)
     assert has_permission(Role.DEVELOPER.value, Permission.ENV_VAR_WRITE)
     assert has_permission(Role.DEVELOPER.value, Permission.CONTAINER_LIFECYCLE)
+    assert has_permission(Role.DEVELOPER.value, Permission.IMAGE_SCAN)
     assert not has_permission(Role.DEVELOPER.value, Permission.USER_MANAGE)
     assert not has_permission(Role.DEVELOPER.value, Permission.SERVER_WRITE)
     assert not has_permission(Role.DEVELOPER.value, Permission.CONTAINER_DELETE)
 
     assert not has_permission(Role.VIEWER.value, Permission.PROJECT_WRITE)
     assert not has_permission(Role.VIEWER.value, Permission.DEPLOY)
+    assert not has_permission(Role.VIEWER.value, Permission.IMAGE_SCAN)
     assert not has_permission("peran-tidak-dikenal", Permission.DEPLOY)
     assert not has_permission(None, Permission.DEPLOY)
 

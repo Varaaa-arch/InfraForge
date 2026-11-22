@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from app.api import alerts, api_tokens, applications, audit_logs, auth, container_policies, containers, dashboard, deploy_tokens, deployments, docker, env_vars, health, logs, metrics, projects, servers, users, webhooks
+from app.api import alerts, api_tokens, applications, audit_logs, auth, container_policies, containers, dashboard, deploy_tokens, deployments, docker, env_vars, health, image_scans, logs, metrics, projects, servers, tls_domains, users, webhooks
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -155,6 +155,21 @@ tags_metadata = [
         ),
     },
     {
+        "name": "image-scans",
+        "description": (
+            "Pemindaian kerentanan image container dengan Trivy: ringkasan "
+            "CRITICAL/HIGH/MEDIUM/LOW, daftar CVE, riwayat scan, dan rescan. "
+            "Temuan di atas ambang batas dikirim ke channel alert aktif."
+        ),
+    },
+    {
+        "name": "tls-domains",
+        "description": (
+            "Pemantauan sertifikat TLS/SSL domain: expiry, validitas, "
+            "self-signed, hostname mismatch, timeout, dan pemeriksaan ulang."
+        ),
+    },
+    {
         "name": "websocket",
         "description": (
             "**WebSocket** endpoints untuk streaming real-time. "
@@ -215,6 +230,8 @@ app.include_router(applications.router)
 app.include_router(docker.router)
 app.include_router(containers.router)
 app.include_router(container_policies.router)
+app.include_router(image_scans.router)
+app.include_router(tls_domains.router)
 app.include_router(logs.router)
 app.include_router(alerts.router)
 app.include_router(alerts.channels_router)

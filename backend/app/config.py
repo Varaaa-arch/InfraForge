@@ -73,6 +73,40 @@ class Settings(BaseSettings):
     DEPLOY_NOTIFICATIONS_ENABLED: bool = True
 
     # ---------------------------------------------------------------------------
+    # Container Image Vulnerability Scanning (Trivy)
+    # ---------------------------------------------------------------------------
+    # Path binary Trivy. Di Docker image backend, mount/install binary di sini.
+    TRIVY_PATH: str = "trivy"
+    # Timeout satu pemindaian image (detik). Trivy bisa mengunduh DB saat awal.
+    IMAGE_SCAN_TIMEOUT_SECONDS: int = 180
+    # Batas ukuran output JSON mentah; lebih dari ini scan dianggap gagal.
+    IMAGE_SCAN_MAX_OUTPUT_BYTES: int = 10 * 1024 * 1024
+    # Jumlah finding yang disimpan ke database per scan.
+    IMAGE_SCAN_MAX_FINDINGS: int = 500
+    # Alert dikirim bila jumlah CRITICAL/HIGH MELEBIHI threshold ini.
+    IMAGE_SCAN_CRITICAL_THRESHOLD: int = 0
+    IMAGE_SCAN_HIGH_THRESHOLD: int = 0
+    IMAGE_SCAN_NOTIFICATIONS_ENABLED: bool = True
+
+    # ---------------------------------------------------------------------------
+    # TLS/SSL Domain Inspection
+    # ---------------------------------------------------------------------------
+    # Timeout koneksi/handshake TLS per pemeriksaan (detik).
+    TLS_DOMAIN_CHECK_TIMEOUT_SECONDS: int = 10
+    # Cache in-memory hasil inspeksi agar endpoint tidak selalu membuka koneksi.
+    TLS_DOMAIN_CACHE_TTL_SECONDS: int = 300
+    # Default ambang peringatan jika target tidak menentukan warning_days.
+    TLS_DOMAIN_EXPIRY_WARNING_DAYS: int = 30
+    # Batas jumlah target domain yang dapat dikonfigurasi.
+    TLS_DOMAIN_MAX_TARGETS: int = 50
+    # Izinkan pemeriksaan ke IP privat/loopback (hati-hati risiko SSRF).
+    TLS_DOMAIN_ALLOW_PRIVATE_IP: bool = False
+    # Kirim notifikasi status TLS bermasalah ke channel alert aktif.
+    TLS_NOTIFICATIONS_ENABLED: bool = True
+    # Cooldown agar status yang sama tidak membanjiri channel.
+    TLS_ALERT_COOLDOWN_SECONDS: int = 86400
+
+    # ---------------------------------------------------------------------------
     # Auto-Healing Container
     # ---------------------------------------------------------------------------
     # Worker health polling. Default nonaktif agar test/dev tidak memanggil

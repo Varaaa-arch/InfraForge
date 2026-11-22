@@ -109,6 +109,24 @@ AUDIT_RULES: tuple[AuditRule, ...] = (
     # Docker image
     _rule("POST", r"/docker/images/pull", "IMAGE_PULL", "docker_image"),
     _rule("DELETE", r"/docker/images/(?P<id>[^/]+)", "IMAGE_DELETE", "docker_image"),
+    # Image vulnerability scan
+    _rule("POST", r"/image-scans", "IMAGE_SCAN", "image_scan"),
+    _rule(
+        "POST",
+        r"/image-scans/(?P<id>\d+)/rescan",
+        "IMAGE_SCAN_RESCAN",
+        "image_scan",
+    ),
+    # TLS/SSL domain
+    _rule("POST", r"/tls-domains", "TLS_DOMAIN_CREATE", "tls_domain"),
+    _rule("PATCH", r"/tls-domains/(?P<id>\d+)", "TLS_DOMAIN_UPDATE", "tls_domain"),
+    _rule("DELETE", r"/tls-domains/(?P<id>\d+)", "TLS_DOMAIN_DELETE", "tls_domain"),
+    _rule(
+        "POST",
+        r"/tls-domains/(?P<id>\d+)/check",
+        "TLS_DOMAIN_CHECK",
+        "tls_domain",
+    ),
     # Container lifecycle
     _rule(
         "POST", r"/containers/(?P<id>[^/]+)/start", "CONTAINER_START", "container"

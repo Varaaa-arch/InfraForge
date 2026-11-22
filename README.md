@@ -23,6 +23,8 @@
 - [Milestone 7 Fase 2 — Deployment Version History & Instant Rollback](#milestone-7-fase-2--deployment-version-history--instant-rollback)
 - [Milestone 7 Fase 3 — Git Provider Integration & Live Deployment Logs](#milestone-7-fase-3--git-provider-integration--live-deployment-logs)
 - [Milestone 7 Fase 4 — Token Rotation, Security Alerts & Playwright E2E](#milestone-7-fase-4--token-rotation-security-alerts--playwright-e2e)
+- [Milestone 8 Fase 1 — Container Image Vulnerability Scanning](#milestone-8-fase-1--container-image-vulnerability-scanning)
+- [Milestone 8 Fase 2 — TLS/SSL Domain Certificate Monitoring](#milestone-8-fase-2--tlsssl-domain-certificate-monitoring)
 - [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
 - [Manajemen Konfigurasi & Rahasia](#manajemen-konfigurasi-rahasia)
 - [Tata Kelola Platform](#tata-kelola-platform)
@@ -111,6 +113,8 @@ flowchart TD
 | **Deployment** | Deploy aplikasi, riwayat tag/commit/pemicu per project, dan rollback instan ke versi stabil |
 | **CI/CD Integration** | Token project/aplikasi dengan rotasi aman, koneksi repository, webhook GitHub/GitLab dengan filter branch per aplikasi, live log deployment, idempotency, audit, alert security, dan E2E Playwright |
 | **Container Management** | Start, stop, restart, delete, view logs, limit CPU/memory & auto-healing |
+| **Container Security** | Pemindaian CVE image dengan Trivy, riwayat scan, detail finding, rescan, dan alert threshold CRITICAL/HIGH |
+| **TLS/SSL Monitoring** | Pemantauan expiry & validitas sertifikat domain, deteksi self-signed/hostname mismatch, riwayat cek, recheck manual, dan alert |
 | **Infrastructure UI** | Halaman Servers (CRUD + status exporter Prometheus) & Containers (health, port mapping, CPU/RAM, lifecycle, inspect, resource limit, tab Auto-Healing) |
 | **Configuration & Secrets** | Environment variable per project terenkripsi (Fernet), secret masking, indikator re-deploy, bulk import `.env` |
 | **Monitoring** | CPU, RAM, Disk, Docker, Network, Uptime |
@@ -543,6 +547,59 @@ keamanan, dan E2E Playwright end-to-end.
 
 ---
 
+## Milestone 8 Fase 1 — Container Image Vulnerability Scanning
+
+Fase ini menambahkan halaman **Keamanan** (`/security`) dan API pemindaian
+kerentanan image container berbasis Trivy.
+
+- **Trigger scan & rescan** — pindai referensi image (mis. `nginx:1.27`) dengan
+  atau tanpa project. Rescan membuat baris riwayat baru agar perubahan temuan
+  dapat dibandingkan.
+- **Ringkasan severity** — hitungan CRITICAL/HIGH/MEDIUM/LOW, total CVE, digest
+  image, status, waktu, dan pemicu disimpan per scan.
+- **Detail CVE** — dialog menampilkan package, versi terpasang, versi
+  perbaikan, dan tautan referensi untuk setiap finding.
+- **RBAC** — izin `image:scan` untuk Admin/Developer; Viewer hanya baca.
+  Visibilitas scan dibatasi ke milik sendiri atau project miliknya.
+- **Tahan kegagalan** — Trivy tidak tersedia, timeout, atau output rusak
+  menghasilkan status `failed` dengan pesan jelas tanpa menggagalkan request.
+- **Alert threshold** — notifikasi ke channel aktif bila jumlah CRITICAL/HIGH
+  melewati `IMAGE_SCAN_CRITICAL_THRESHOLD` / `IMAGE_SCAN_HIGH_THRESHOLD`.
+- **Docker** — image backend memasang Trivy dan memakai named volume
+  `trivy_cache` agar vulnerability DB tidak diunduh ulang setiap restart.
+
+> Rincian kontrak API, konfigurasi, migrasi, keputusan desain, dan batasan ada
+> di [`docs/milestone-8-phase-1.md`](docs/milestone-8-phase-1.md).
+
+---
+
+## Milestone 8 Fase 2 — TLS/SSL Domain Certificate Monitoring
+
+Fase ini menambahkan halaman **TLS / SSL** (`/tls-domains`) untuk memantau
+sertifikat domain reverse proxy dari dashboard.
+
+- **Target domain** — daftarkan hostname/IP dan port (default 443). Setiap
+  target memiliki label opsional, ambang warning, dan status aktif.
+- **Inspeksi sertifikat** — backend membuka koneksi TLS, membaca issuer,
+  subject, protocol, tanggal kedaluwarsa, dan sisa hari. Chain/hostname
+  diverifikasi pada handshake kedua.
+- **Status jelas** — `healthy`, `expiring`, `expired`, `invalid`, `error`, atau
+  `pending`; self-signed dan hostname mismatch ditandai `invalid`.
+- **Riwayat & recheck** — setiap pemeriksaan disimpan, dan tombol **Periksa
+  ulang** memaksa koneksi baru (melewati cache TTL).
+- **RBAC & audit** — izin `tls_domain:write` untuk Admin/Developer; Viewer hanya
+  baca. Create/update/delete/check masuk audit log.
+- **Alert** — status bermasalah dikirim ke channel aktif dengan severity
+  `critical` (expired) atau `warning` (expiring/invalid/error), dibatasi
+  cooldown agar tidak membanjiri channel.
+- **Keamanan target** — IP privat/loopback ditolak secara default untuk
+  mengurangi risiko SSRF; dapat diaktifkan via env untuk target internal.
+
+> Rincian kontrak API, konfigurasi, migrasi, dan batasan ada di
+> [`docs/milestone-8-phase-2.md`](docs/milestone-8-phase-2.md).
+
+---
+
 ## Manajemen Infrastruktur UI
 
 Milestone 5 Fase 1 menambahkan sisi operasional dari metrik Milestone 4: dua
@@ -677,6 +734,8 @@ perintah reproduksi, dan hasil pengujian) ada di
 - [x] Koneksi repository, filter branch webhook per aplikasi, dan live log build/compose
 - [x] Notifikasi hasil deployment CI/webhook ke channel alert
 - [x] Rotasi token, alert security webhook, dan E2E Playwright DoD Milestone 7
+- [x] Container image vulnerability scanning (Trivy, riwayat CVE, rescan, alert threshold)
+- [x] Pemantauan sertifikat TLS/SSL domain (expiry, validitas, riwayat, alert)
 - [ ] UI manajemen aplikasi dan deployment
 - [ ] Grafana dashboards & Traefik reverse proxy
 - [ ] Object storage MinIO untuk artefak deployment
