@@ -18,11 +18,13 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from loguru import logger
+from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.services import audit_service
+from app.services import audit_service, deploy_security_notification_service
 
 
 @dataclass(frozen=True)
@@ -148,6 +150,12 @@ AUDIT_RULES: tuple[AuditRule, ...] = (
         "deploy_token",
     ),
     _rule(
+        "POST",
+        r"/projects/(?P<project_id>\d+)/deploy-tokens/(?P<id>\d+)/rotate",
+        "DEPLOY_TOKEN_ROTATE",
+        "deploy_token",
+    ),
+    _rule(
         "DELETE",
         r"/projects/(?P<project_id>\d+)/deploy-tokens/(?P<id>\d+)",
         "DEPLOY_TOKEN_REVOKE",
@@ -227,7 +235,28 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
         except Exception as exc:  # pragma: no cover - jalur defensif
             logger.warning(f"Audit middleware gagal memproses request: {exc}")
 
+        self._schedule_webhook_notification(request, response)
         return response
+
+    @staticmethod
+    def _schedule_webhook_notification(
+        request: Request, response: Response
+    ) -> None:
+        payload = getattr(request.state, "webhook_notification", None)
+        if not isinstance(payload, dict):
+            return
+
+        existing = response.background
+
+        async def notify() -> None:
+            if existing is not None:
+                await existing()
+            await run_in_threadpool(
+                deploy_security_notification_service.notify_webhook_outcome,
+                **payload,
+            )
+
+        response.background = BackgroundTask(notify)
 
     @staticmethod
     def _record(request: Request, status_code: int) -> None:

@@ -74,6 +74,25 @@ def create(
     return token
 
 
+def rotate(
+    db: Session,
+    token: DeploymentToken,
+    *,
+    token_hash: str,
+    prefix: str,
+    expires_at: datetime | None,
+) -> DeploymentToken:
+    """Ganti hash/prefix token dan reset pemakaian terakhir."""
+    token.token_hash = token_hash
+    token.prefix = prefix
+    token.expires_at = expires_at
+    token.last_used_at = None
+    db.add(token)
+    db.commit()
+    db.refresh(token)
+    return token
+
+
 def revoke(db: Session, token: DeploymentToken, when: datetime) -> DeploymentToken:
     """Cabut token dengan mengisi ``revoked_at``."""
     token.revoked_at = when

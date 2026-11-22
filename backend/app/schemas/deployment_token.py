@@ -30,6 +30,20 @@ class DeploymentTokenCreate(BaseModel):
     )
 
 
+class DeploymentTokenRotate(BaseModel):
+    """Payload opsional untuk merotasi token aktif."""
+
+    expires_in_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=365,
+        description=(
+            "Masa berlaku baru dalam hari. Kosong = pertahankan masa berlaku "
+            "token saat ini."
+        ),
+    )
+
+
 class DeploymentTokenResponse(BaseModel):
     """Metadata token — plaintext dan hash tidak pernah dikembalikan."""
 

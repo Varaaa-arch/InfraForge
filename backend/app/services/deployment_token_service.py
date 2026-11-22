@@ -38,6 +38,13 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _generate_token() -> tuple[str, str]:
+    """Kembalikan ``(token_plaintext, prefix)`` baru."""
+    token_prefix = secrets.token_hex(4)
+    secret = secrets.token_hex(32)
+    return f"{TOKEN_PREFIX}{token_prefix}_{secret}", f"{TOKEN_PREFIX}{token_prefix}"
+
+
 def create_token(
     db: Session,
     *,
@@ -61,9 +68,7 @@ def create_token(
                 f"Application {application_id} tidak ditemukan pada project ini"
             )
 
-    token_prefix = secrets.token_hex(4)
-    secret = secrets.token_hex(32)
-    token = f"{TOKEN_PREFIX}{token_prefix}_{secret}"
+    token, prefix = _generate_token()
 
     expires_at = (
         _now() + timedelta(days=expires_in_days)
@@ -78,10 +83,50 @@ def create_token(
         created_by=created_by,
         name=name,
         token_hash=hash_token(token),
-        prefix=f"{TOKEN_PREFIX}{token_prefix}",
+        prefix=prefix,
         expires_at=expires_at,
     )
     return record, token
+
+
+def rotate_token(
+    db: Session,
+    token: DeploymentToken,
+    *,
+    expires_in_days: int | None = None,
+) -> tuple[DeploymentToken, str]:
+    """Rotasi token aktif dan kembalikan plaintext baru sekali.
+
+    Token lama langsung tidak berlaku setelah commit. Masa berlaku lama
+    dipertahankan kecuali ``expires_in_days`` diberikan.
+
+    Raises:
+        ValueError: token sudah dicabut atau kedaluwarsa.
+    """
+    now = _now()
+    if token.revoked_at is not None:
+        raise ValueError("Token yang sudah dicabut tidak dapat dirotasi")
+    if token.expires_at is not None:
+        expires_at = token.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= now:
+            raise ValueError("Token yang sudah kedaluwarsa tidak dapat dirotasi")
+
+    raw_token, prefix = _generate_token()
+    new_expiry = (
+        now + timedelta(days=expires_in_days)
+        if expires_in_days is not None
+        else token.expires_at
+    )
+    record = deployment_token_repository.rotate(
+        db,
+        token,
+        token_hash=hash_token(raw_token),
+        prefix=prefix,
+        expires_at=new_expiry,
+    )
+    return record, raw_token
 
 
 def list_tokens(db: Session, project_id: int) -> list[DeploymentToken]:

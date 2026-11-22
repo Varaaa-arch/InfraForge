@@ -182,6 +182,94 @@ def test_create_token_returns_plaintext_once_and_stores_hash(
     assert "token_hash" not in items[0]
 
 
+def test_rotate_token_invalidates_old_and_returns_new_plaintext(
+    client: TestClient, db_session: Session
+) -> None:
+    _user, headers, project_id, _server_id, _app = _setup_deployable(
+        client, db_session
+    )
+    created = _create_token(
+        client, headers, project_id, name="rotate-me", expires_in_days=7
+    )
+    old_token = str(created["token"])
+    old_prefix = str(created["prefix"])
+
+    response = client.post(
+        f"/projects/{project_id}/deploy-tokens/{created['id']}/rotate",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    rotated = response.json()["data"]
+    new_token = str(rotated["token"])
+
+    assert rotated["id"] == created["id"]
+    assert rotated["name"] == "rotate-me"
+    assert rotated["application_id"] == created["application_id"]
+    assert rotated["prefix"] != old_prefix
+    assert new_token != old_token
+    assert rotated["expires_at"] == created["expires_at"]
+    assert deployment_token_service.find_active_by_token(db_session, old_token) is None
+    assert deployment_token_service.find_active_by_token(db_session, new_token) is not None
+
+    listing = client.get(
+        f"/projects/{project_id}/deploy-tokens", headers=headers
+    ).json()["data"]
+    assert len(listing) == 1
+    assert listing[0]["prefix"] == rotated["prefix"]
+    assert "token" not in listing[0]
+
+
+def test_rotate_token_with_new_expiry_and_revoke_guard(
+    client: TestClient, db_session: Session
+) -> None:
+    _user, headers, project_id, _server_id, _app = _setup_deployable(
+        client, db_session
+    )
+    created = _create_token(client, headers, project_id)
+
+    rotated = client.post(
+        f"/projects/{project_id}/deploy-tokens/{created['id']}/rotate",
+        json={"expires_in_days": 30},
+        headers=headers,
+    )
+    assert rotated.status_code == 200, rotated.text
+    expires_at = datetime.fromisoformat(rotated.json()["data"]["expires_at"])
+    assert expires_at > datetime.now(timezone.utc) + timedelta(days=29)
+
+    revoked = client.delete(
+        f"/projects/{project_id}/deploy-tokens/{created['id']}", headers=headers
+    )
+    assert revoked.status_code == 200
+    conflict = client.post(
+        f"/projects/{project_id}/deploy-tokens/{created['id']}/rotate",
+        headers=headers,
+    )
+    assert conflict.status_code == 409
+    assert "dicabut" in conflict.json()["message"]
+
+
+def test_rotate_expired_token_is_rejected(
+    client: TestClient, db_session: Session
+) -> None:
+    _user, headers, project_id, _server_id, _app = _setup_deployable(
+        client, db_session
+    )
+    created = _create_token(client, headers, project_id)
+    record = deployment_token_service.get_token(
+        db_session, project_id, int(created["id"])
+    )
+    assert record is not None
+    record.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db_session.commit()
+
+    response = client.post(
+        f"/projects/{project_id}/deploy-tokens/{created['id']}/rotate",
+        headers=headers,
+    )
+    assert response.status_code == 409
+    assert "kedaluwarsa" in response.json()["message"]
+
+
 def test_non_owner_cannot_manage_tokens(
     client: TestClient, db_session: Session
 ) -> None:
@@ -208,6 +296,12 @@ def test_non_owner_cannot_manage_tokens(
     assert (
         client.delete(
             f"/projects/{project_id}/deploy-tokens/1", headers=other_headers
+        ).status_code
+        == 404
+    )
+    assert (
+        client.post(
+            f"/projects/{project_id}/deploy-tokens/1/rotate", headers=other_headers
         ).status_code
         == 404
     )
@@ -483,11 +577,43 @@ def test_deployment_repository_trigger_source_defaults_to_manual(
 # Audit
 # ---------------------------------------------------------------------------
 
+def test_rotate_writes_audit_event_without_plaintext(
+    client: TestClient, db_session: Session
+) -> None:
+    _user, headers, project_id, _server_id, _app = _setup_deployable(
+        client, db_session
+    )
+    created = _create_token(client, headers, project_id, name="rotate-audit")
+
+    with patch("app.services.audit_service.record") as record_mock:
+        response = client.post(
+            f"/projects/{project_id}/deploy-tokens/{created['id']}/rotate",
+            headers=headers,
+        )
+    assert response.status_code == 200, response.text
+    new_token = str(response.json()["data"]["token"])
+
+    events = [call.args[0] for call in record_mock.call_args_list]
+    rotations = [event for event in events if event.action == "DEPLOY_TOKEN_ROTATE"]
+    assert len(rotations) == 1
+    event = rotations[0]
+    assert event.resource_type == "deploy_token"
+    assert event.resource_id == str(created["id"])
+    assert event.details == {"project_id": str(project_id)}
+    assert new_token not in str(event.path)
+    assert str(created["token"]) not in str(event.path)
+
+
 def test_audit_rules_cover_token_management_and_trigger() -> None:
     create_rule = match_audit_rule("POST", "/projects/7/deploy-tokens")
     assert create_rule is not None
     assert create_rule[0].action == "DEPLOY_TOKEN_CREATE"
     assert create_rule[1] == {"project_id": "7"}
+
+    rotate_rule = match_audit_rule("POST", "/projects/7/deploy-tokens/3/rotate")
+    assert rotate_rule is not None
+    assert rotate_rule[0].action == "DEPLOY_TOKEN_ROTATE"
+    assert rotate_rule[1] == {"project_id": "7", "id": "3"}
 
     revoke_rule = match_audit_rule("DELETE", "/projects/7/deploy-tokens/3")
     assert revoke_rule is not None

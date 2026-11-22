@@ -1,9 +1,10 @@
 """Router deployment token (CI/CD) per project + endpoint publik trigger.
 
 Endpoint manajemen (butuh login, hanya owner project):
-  POST   /projects/{project_id}/deploy-tokens          → buat token (plaintext sekali)
-  GET    /projects/{project_id}/deploy-tokens          → list metadata token
-  DELETE /projects/{project_id}/deploy-tokens/{id}     → cabut token
+  POST   /projects/{project_id}/deploy-tokens           → buat token (plaintext sekali)
+  POST   /projects/{project_id}/deploy-tokens/{id}/rotate → rotasi token (plaintext sekali)
+  GET    /projects/{project_id}/deploy-tokens           → list metadata token
+  DELETE /projects/{project_id}/deploy-tokens/{id}      → cabut token
 
 Endpoint publik (tanpa login, autentikasi via token):
   POST   /deploy/trigger/{token}                       → jadwalkan deployment
@@ -23,6 +24,7 @@ from app.core.permissions import require_permission
 from app.core.roles import Permission
 from app.database.session import get_db
 from app.models.deployment_token import DeploymentToken
+from app.models.project import Project
 from app.models.user import User
 from app.schemas.common import MessageResponse
 from app.schemas.deployment_token import (
@@ -31,11 +33,13 @@ from app.schemas.deployment_token import (
     DeploymentTokenCreate,
     DeploymentTokenCreated,
     DeploymentTokenResponse,
+    DeploymentTokenRotate,
     DeploymentTriggerRequest,
     DeploymentTriggerResponse,
 )
 from app.schemas.response import ApiResponse
 from app.services import (
+    deploy_security_notification_service,
     deployment_notification_service,
     deployment_queue,
     deployment_token_service,
@@ -57,11 +61,12 @@ webhook_router = APIRouter(prefix="/v1/deploy", tags=["deploy-webhook"])
 
 def _require_owned_project(
     project_id: int, current_user: User, db: Session
-) -> None:
-    """Raise 404 jika project tidak ada atau bukan milik current_user."""
+) -> Project:
+    """Return project atau raise 404 jika bukan milik current_user."""
     project = project_service.get_project_by_id(db, project_id)
     if not project or project.owner_id != current_user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+    return project
 
 
 # ---------------------------------------------------------------------------
@@ -89,10 +94,11 @@ def _require_owned_project(
 def create_deploy_token(
     project_id: int,
     payload: DeploymentTokenCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(require_permission(Permission.DEPLOY)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[DeploymentTokenCreated]:
-    _require_owned_project(project_id, current_user, db)
+    project = _require_owned_project(project_id, current_user, db)
 
     try:
         record, token = deployment_token_service.create_token(
@@ -106,8 +112,69 @@ def create_deploy_token(
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
 
+    background_tasks.add_task(
+        deploy_security_notification_service.notify_token_event,
+        action="created",
+        project_name=project.name,
+        token_name=record.name,
+        prefix=record.prefix,
+        username=current_user.username,
+    )
     base = DeploymentTokenResponse.model_validate(record)
     return ApiResponse(data=DeploymentTokenCreated(**base.model_dump(), token=token))
+
+
+@router.post(
+    "/{token_id}/rotate",
+    response_model=ApiResponse[DeploymentTokenCreated],
+    summary="Rotasi deployment token",
+    description=(
+        "Menerbitkan secret baru untuk token yang sama dan langsung "
+        "menonaktifkan token lama. **Token plaintext baru hanya dikembalikan "
+        "sekali** pada response ini. Nama, cakupan aplikasi, dan masa berlaku "
+        "dipertahankan kecuali `expires_in_days` diberikan."
+    ),
+    responses={
+        200: {"description": "Token berhasil dirotasi"},
+        404: {"description": "Project atau token tidak ditemukan"},
+        409: {"description": "Token sudah dicabut atau kedaluwarsa"},
+    },
+)
+def rotate_deploy_token(
+    project_id: int,
+    token_id: int,
+    background_tasks: BackgroundTasks,
+    payload: DeploymentTokenRotate | None = None,
+    current_user: User = Depends(require_permission(Permission.DEPLOY)),
+    db: Session = Depends(get_db),
+) -> ApiResponse[DeploymentTokenCreated]:
+    project = _require_owned_project(project_id, current_user, db)
+
+    token = deployment_token_service.get_token(db, project_id, token_id)
+    if token is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Token tidak ditemukan")
+
+    try:
+        record, raw_token = deployment_token_service.rotate_token(
+            db,
+            token,
+            expires_in_days=payload.expires_in_days if payload else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
+
+    background_tasks.add_task(
+        deploy_security_notification_service.notify_token_event,
+        action="rotated",
+        project_name=project.name,
+        token_name=record.name,
+        prefix=record.prefix,
+        username=current_user.username,
+    )
+    base = DeploymentTokenResponse.model_validate(record)
+    return ApiResponse(
+        data=DeploymentTokenCreated(**base.model_dump(), token=raw_token)
+    )
 
 
 @router.get(
@@ -150,10 +217,11 @@ def list_deploy_tokens(
 def revoke_deploy_token(
     project_id: int,
     token_id: int,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(require_permission(Permission.DEPLOY)),
     db: Session = Depends(get_db),
 ) -> ApiResponse[MessageResponse]:
-    _require_owned_project(project_id, current_user, db)
+    project = _require_owned_project(project_id, current_user, db)
 
     token = deployment_token_service.get_token(db, project_id, token_id)
     if token is None:
@@ -161,6 +229,14 @@ def revoke_deploy_token(
 
     if token.revoked_at is None:
         deployment_token_service.revoke_token(db, token)
+        background_tasks.add_task(
+            deploy_security_notification_service.notify_token_event,
+            action="revoked",
+            project_name=project.name,
+            token_name=token.name,
+            prefix=token.prefix,
+            username=current_user.username,
+        )
 
     return ApiResponse(data=MessageResponse(message="Token deployment dicabut"))
 
@@ -297,6 +373,14 @@ def _audit_webhook(
             continue
         details[key] = str(value)
     request.state.audit_details = details
+    request.state.webhook_notification = {
+        "outcome": outcome,
+        "source": source,
+        "project_id": record.project_id if record is not None else None,
+        "token_name": record.name if record is not None else None,
+        "branch": parsed.branch if parsed is not None else None,
+        "repository": parsed.repository if parsed is not None else None,
+    }
 
 
 def _webhook_response(
@@ -417,7 +501,13 @@ async def deployment_webhook(
             )
 
     if parsed.event is not None and parsed.event.lower() != "push":
-        _audit_webhook(request, record, parsed.source, "ignored_event", parsed)
+        _audit_webhook(
+            request,
+            record,
+            parsed.source,
+            "ignored_event",
+            parsed,
+        )
         return _webhook_response(
             accepted=False,
             message=f"Event '{parsed.event}' tidak diproses (hanya push)",
@@ -430,9 +520,21 @@ async def deployment_webhook(
         )
     except ValueError as exc:
         if parsed.source == "ci":
-            _audit_webhook(request, record, parsed.source, "invalid_target", parsed)
+            _audit_webhook(
+                request,
+                record,
+                parsed.source,
+                "invalid_target",
+                parsed,
+            )
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
-        _audit_webhook(request, record, parsed.source, "no_target", parsed)
+        _audit_webhook(
+            request,
+            record,
+            parsed.source,
+            "no_target",
+            parsed,
+        )
         return _webhook_response(
             accepted=False,
             message=str(exc),
@@ -440,7 +542,13 @@ async def deployment_webhook(
         )
 
     if not applications:
-        _audit_webhook(request, record, parsed.source, "no_match", parsed)
+        _audit_webhook(
+            request,
+            record,
+            parsed.source,
+            "no_match",
+            parsed,
+        )
         reason = (
             "Ref event bukan branch push"
             if parsed.branch is None

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.middleware.audit_middleware import match_audit_rule
 from app.repositories import deployment_repository
-from app.services import deployment_queue
+from app.services import deploy_security_notification_service, deployment_queue
 
 from tests.test_deploy_tokens import (
     _create_application,
@@ -270,6 +270,59 @@ def test_github_invalid_signature_is_rejected(
     )
     assert response.status_code == 401
     assert "Signature" in response.json()["message"]
+
+
+def test_invalid_signature_schedules_security_notification(
+    client: TestClient, db_session: Session, queue_mocks: tuple[object, object]
+) -> None:
+    _user, headers, project_id, _server_id, _app = _setup_deployable(
+        client, db_session
+    )
+    data = _create_token(client, headers, project_id, name="gh-actions")
+    raw = json.dumps(_github_payload()).encode("utf-8")
+
+    with patch.object(
+        deploy_security_notification_service, "notify_webhook_outcome"
+    ) as notify:
+        response = client.post(
+            f"/v1/deploy/webhook/{data['token']}",
+            content=raw,
+            headers={
+                "Content-Type": "application/json",
+                "X-GitHub-Event": "push",
+                "X-Hub-Signature-256": "sha256=deadbeef",
+                "X-GitHub-Delivery": "security-notification",
+            },
+        )
+
+    assert response.status_code == 401
+    notify.assert_called_once_with(
+        outcome="invalid_signature",
+        source="github",
+        project_id=project_id,
+        token_name="gh-actions",
+        branch=None,
+        repository=None,
+    )
+
+
+def test_invalid_token_schedules_security_notification(client: TestClient) -> None:
+    token = "dt_deadbeef_" + "0" * 64
+
+    with patch.object(
+        deploy_security_notification_service, "notify_webhook_outcome"
+    ) as notify:
+        response = client.post(f"/v1/deploy/webhook/{token}", json={})
+
+    assert response.status_code == 404
+    notify.assert_called_once_with(
+        outcome="invalid_token",
+        source="ci",
+        project_id=None,
+        token_name=None,
+        branch=None,
+        repository=None,
+    )
 
 
 def test_github_non_push_event_is_ignored(
