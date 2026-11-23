@@ -25,6 +25,7 @@
 - [Milestone 7 Fase 4 — Token Rotation, Security Alerts & Playwright E2E](#milestone-7-fase-4--token-rotation-security-alerts--playwright-e2e)
 - [Milestone 8 Fase 1 — Container Image Vulnerability Scanning](#milestone-8-fase-1--container-image-vulnerability-scanning)
 - [Milestone 8 Fase 2 — TLS/SSL Domain Certificate Monitoring](#milestone-8-fase-2--tlsssl-domain-certificate-monitoring)
+- [Milestone 8 Fase 3 — Security Posture, Audit & E2E Penutup](#milestone-8-fase-3--security-posture-audit--e2e-penutup)
 - [Manajemen Infrastruktur UI](#manajemen-infrastruktur-ui)
 - [Manajemen Konfigurasi & Rahasia](#manajemen-konfigurasi-rahasia)
 - [Tata Kelola Platform](#tata-kelola-platform)
@@ -115,6 +116,7 @@ flowchart TD
 | **Container Management** | Start, stop, restart, delete, view logs, limit CPU/memory & auto-healing |
 | **Container Security** | Pemindaian CVE image dengan Trivy, riwayat scan, detail finding, rescan, dan alert threshold CRITICAL/HIGH |
 | **TLS/SSL Monitoring** | Pemantauan expiry & validitas sertifikat domain, deteksi self-signed/hostname mismatch, riwayat cek, recheck manual, dan alert |
+| **Security Posture** | Skor agregat CVE image, status TLS, dan hardening container (privileged/root/read-only/cap-drop/no-new-privileges), temuan teratas, dan RBAC read-only Viewer |
 | **Infrastructure UI** | Halaman Servers (CRUD + status exporter Prometheus) & Containers (health, port mapping, CPU/RAM, lifecycle, inspect, resource limit, tab Auto-Healing) |
 | **Configuration & Secrets** | Environment variable per project terenkripsi (Fernet), secret masking, indikator re-deploy, bulk import `.env` |
 | **Monitoring** | CPU, RAM, Disk, Docker, Network, Uptime |
@@ -600,6 +602,34 @@ sertifikat domain reverse proxy dari dashboard.
 
 ---
 
+## Milestone 8 Fase 3 — Security Posture, Audit & E2E Penutup
+
+Fase penutup Milestone 8 menyatukan hasil scan CVE, status TLS, dan hardening
+container menjadi satu kartu **Posture Keamanan** di dashboard dan halaman
+Keamanan.
+
+- **Posture agregat** — `GET /security/posture` menghitung skor 0–100 dan level
+  `aman`/`perlu_perhatian`/`berisiko` dari tabel image scan, TLS domain, dan
+  `container.attrs` Docker.
+- **Pemeriksaan container** — privileged mode, user root/default, writable
+  rootfs, capability `ALL` tidak di-drop, dan `no-new-privileges` yang tidak
+  aktif.
+- **Temuan teratas** — daftar CVE critical/high, TLS expired/invalid/error, dan
+  konfigurasi container berisiko, dengan tautan cepat ke halaman terkait.
+- **RBAC read-only** — izin `security:read` untuk Admin/Developer/Viewer;
+  Viewer tetap bisa memantau posture, CVE, dan TLS, tetapi semua aksi mutasi
+  scan/TLS/kebijakan container tetap 403.
+- **Audit** — `SECURITY_POSTURE_READ` ditambahkan ke allowlist; audit scan
+  trigger, rescan, perubahan target/kebijakan, dan cek TLS tetap berlaku.
+- **E2E** — seed `seed_m8_e2e.py` dan `milestone-8.spec.ts` menguji posture,
+  detail CVE, status TLS, audit, scan Trivy opsional dengan fallback aman, dan
+  pembatasan role Viewer.
+
+> Rincian formula skor, kontrak API, audit, dan batasan ada di
+> [`docs/milestone-8-phase-3.md`](docs/milestone-8-phase-3.md).
+
+---
+
 ## Manajemen Infrastruktur UI
 
 Milestone 5 Fase 1 menambahkan sisi operasional dari metrik Milestone 4: dua
@@ -736,6 +766,7 @@ perintah reproduksi, dan hasil pengujian) ada di
 - [x] Rotasi token, alert security webhook, dan E2E Playwright DoD Milestone 7
 - [x] Container image vulnerability scanning (Trivy, riwayat CVE, rescan, alert threshold)
 - [x] Pemantauan sertifikat TLS/SSL domain (expiry, validitas, riwayat, alert)
+- [x] Security posture agregat, audit akses, dan E2E penutup Milestone 8
 - [ ] UI manajemen aplikasi dan deployment
 - [ ] Grafana dashboards & Traefik reverse proxy
 - [ ] Object storage MinIO untuk artefak deployment

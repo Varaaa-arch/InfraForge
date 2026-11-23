@@ -30,6 +30,7 @@ class Permission(str, enum.Enum):
     USER_MANAGE = "user:manage"
     AUDIT_READ_ALL = "audit:read_all"
     TLS_DOMAIN_WRITE = "tls_domain:write"
+    SECURITY_READ = "security:read"
 
 
 ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
@@ -44,9 +45,10 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
             Permission.CONTAINER_LIFECYCLE,
             Permission.DEPLOY,
             Permission.TLS_DOMAIN_WRITE,
+            Permission.SECURITY_READ,
         }
     ),
-    Role.VIEWER.value: frozenset(),
+    Role.VIEWER.value: frozenset({Permission.SECURITY_READ}),
 }
 
 

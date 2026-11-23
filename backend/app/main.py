@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from app.api import alerts, api_tokens, applications, audit_logs, auth, container_policies, containers, dashboard, deploy_tokens, deployments, docker, env_vars, health, image_scans, logs, metrics, projects, servers, tls_domains, users, webhooks
+from app.api import alerts, api_tokens, applications, audit_logs, auth, container_policies, containers, dashboard, deploy_tokens, deployments, docker, env_vars, health, image_scans, logs, metrics, projects, security_posture, servers, tls_domains, users, webhooks
 from app.config import settings
 from app.core.exception_handler import register_exception_handlers
 from app.core.logging import setup_logging
@@ -170,6 +170,14 @@ tags_metadata = [
         ),
     },
     {
+        "name": "security-posture",
+        "description": (
+            "Ringkasan posture keamanan platform: agregasi temuan CVE image, "
+            "status TLS, dan pemeriksaan konfigurasi container. Dapat dibaca "
+            "semua peran; aksi mutasi tetap dibatasi Admin/Developer."
+        ),
+    },
+    {
         "name": "websocket",
         "description": (
             "**WebSocket** endpoints untuk streaming real-time. "
@@ -232,6 +240,7 @@ app.include_router(containers.router)
 app.include_router(container_policies.router)
 app.include_router(image_scans.router)
 app.include_router(tls_domains.router)
+app.include_router(security_posture.router)
 app.include_router(logs.router)
 app.include_router(alerts.router)
 app.include_router(alerts.channels_router)

@@ -127,6 +127,13 @@ AUDIT_RULES: tuple[AuditRule, ...] = (
         "TLS_DOMAIN_CHECK",
         "tls_domain",
     ),
+    # Security posture
+    _rule(
+        "GET",
+        r"/security/posture",
+        "SECURITY_POSTURE_READ",
+        "security_posture",
+    ),
     # Container lifecycle
     _rule(
         "POST", r"/containers/(?P<id>[^/]+)/start", "CONTAINER_START", "container"

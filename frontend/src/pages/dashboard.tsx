@@ -18,6 +18,7 @@ import { Link } from "react-router-dom";
 
 import { apiFetch, API_BASE_URL } from "@/api/client";
 import { MonitoringShortcutCard, ServerHealth } from "@/components/dashboard/server-health";
+import { SecurityPostureCard } from "@/components/security/security-posture-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -209,6 +210,8 @@ export function DashboardPage() {
           error={statsError}
         />
       </div>
+
+      <SecurityPostureCard />
 
       <ServerHealth />
 
